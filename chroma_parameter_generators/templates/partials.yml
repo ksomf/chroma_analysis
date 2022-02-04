@@ -1,0 +1,5 @@
+{
+  "fh-params" : "{{#fh-params}}_{{lams}}_{{op}}_q{{#q}}{{.}}{{/q}}{{/fh-params}}"
+, "prop_id"   : "{{#fh-params}}fh_{{/fh-params}}prop_{{kappa}}{{> fh-params}}"
+, "gauge_id"  : "wflow_gfield_{{wtime}}_{{wsteps}}"
+}

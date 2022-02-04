@@ -1,0 +1,2 @@
+export SRC_DIR="point to directory containing all project source code"
+export CHROMA_INSTALL="point to directory containing the compiled chroma codes"
