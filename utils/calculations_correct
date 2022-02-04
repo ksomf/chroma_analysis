@@ -1,0 +1,12 @@
+#!/bin/bash
+
+source common.sh || return 1
+
+case "$OSTYPE" in
+  darwin*)
+    osascript -e 'tell app "System Events" to display dialog "Calculations Correct!" with title "Calculations"'
+  ;;
+  linux*)
+    zenity --warning --text 'Calculations Correct!'
+  ;;
+esac

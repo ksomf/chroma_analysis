@@ -1,0 +1,42 @@
+#!/usr/bin/bash
+
+which icc   &> /dev/null && COMPILER=icc
+which gcc   &> /dev/null && COMPILER=gcc
+which clang &> /dev/null && COMPILER=clang
+COMPILER_FLAGS='-O0 -g -Wall -Werror -fwrapv'
+cat /proc/cpuinfo | grep 'sse4' > /dev/null && COMPILER_FLAGS="${COMPILER_FLAGS} -msse4"
+cat /proc/cpuinfo | grep 'avx' > /dev/null && COMPILER_FLAGS="${COMPILER_FLAGS} -mavx"
+
+#COMPILER_FLAGS='-O2 -Wall -fwrapv -ffunction-sections -fdata-sections -Wno-unused-function -mavx'
+LINKER_FLAGS=' '
+LIB_FLAGS=' '
+
+case "$HOSTNAME" in
+  raijin*)
+    #which icc &> /dev/null && COMPILER=/apps/intel-ct/17.0.1.132/cc/bin/icc
+    COMPILER_FLAGS="${COMPILER_FLAGS} -std=gnu99 "
+  ;;
+esac
+
+case "$OSTYPE" in 
+  linux*)  
+    LINKER_FLAGS="-ldl ${LINKER_FLAGS}"
+    LIB_FLAGS="-fPIC -shared ${LIB_FLAGS}"
+  ;;
+  darwin*)
+    LIB_FLAGS="-dynamiclib ${LIB_FLAGS}"
+  ;;
+esac
+
+case "$COMPILER" in 
+  gcc*)
+    COMPILER_FLAGS="${COMPILER_FLAGS} -std=gnu99 -Wno-unused -Wno-format"
+  ;;
+  clang*)
+    COMPILER_FLAGS="${COMPILER_FLAGS} -ffunction-sections -fdata-sections -Wno-null-dereference -Wno-unused-function -fsanitize-undefined-trap-on-error -Wno-unused-variable -fsanitize=null -Wno-c++11-compat-deprecated-writable-strings -fno-omit-frame-pointer"
+  ;;
+  *icc*)
+    COMPILER_FLAGS="${COMPILER_FLAGS} -xMIC-AVX512 "
+  ;;
+esac
+
