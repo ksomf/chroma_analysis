@@ -17,7 +17,7 @@ typedef struct {
 } Lime_Header;
 
 static void PrintLimeHeader( Lime_Header *lime_header ){
-  printf( "M:%u, V:%hu, M:%hu, S:%lu, T:%.128s\n", lime_header->magic_number, lime_header->file_version, lime_header->magic_bits, lime_header->data_size, lime_header->type );
+  printf( "M:%u, V:%hu, M:%hu, S:%llu, T:%.128s\n", lime_header->magic_number, lime_header->file_version, lime_header->magic_bits, lime_header->data_size, lime_header->type );
 }
 
 static Lime_Header *ReadLimeHeader( u8 **pos ){
@@ -59,7 +59,7 @@ static c8 *GetConfigurationName( hlMem_Pool *tmp_pool, hlMem_Pool *mem_pool, hlX
     hlXML_Result szinqio_inv_config_name_xml = hlXMLQuery( tmp_pool, tmp_pool, dir_xml, "Input/lime_file" );
     hlXML_Result szinqio_gen_config_name_xml = hlXMLQuery( tmp_pool, tmp_pool, dir_xml, "Input/chroma/Cfg/cfg_file" );
     c8 *query_result;
-    //printf( "%lu, %lu, %lu\n", ildg_config_name_xml.count, szinqio_inv_config_name_xml.count, szinqio_gen_config_name_xml.count );
+    //printf( "%llu, %llu, %llu\n", ildg_config_name_xml.count, szinqio_inv_config_name_xml.count, szinqio_gen_config_name_xml.count );
     if( ildg_config_name_xml.count == 1 || szinqio_inv_config_name_xml.count == 1 ){
       //printf( "ILDG CONFIG OR SZINQIO HADRON SPECTROSCOPY OUTPUT\n" );
       hlASSERT( (szinqio_inv_config_name_xml.count == 1 && szinqio_inv_config_name_xml .values[ 0 ]->type == hlXML_STR )
@@ -81,12 +81,12 @@ static c8 *GetConfigurationName( hlMem_Pool *tmp_pool, hlMem_Pool *mem_pool, hlX
       c8 *after_config  = hlStrAfterC( tokken_for_next, config_start );
       c8 *end_config    = after_config - 1;
       
-      //printf( "%lu\n", (u64)(end_config-config_start) );
+      //printf( "%llu\n", (u64)(end_config-config_start) );
       c8 *config = hlStrCopy( tmp_pool, (u64)(end_config-config_start), config_start );
       u64 config_u64 = strtoul( config, 0, 10 );
-      //printf( "%lu ( %s -> %lu )\n", (u64)(end_config-config_start), config, config_u64 );
+      //printf( "%llu ( %s -> %llu )\n", (u64)(end_config-config_start), config, config_u64 );
       result = hlStrCopyC( mem_pool, query_result );
-      snprintf( result + (u64)(gen_end - query_result), 6, "%05lu", config_u64 );
+      snprintf( result + (u64)(gen_end - query_result), 6, "%05llu", config_u64 );
       
       //printf( "%s\n", result );
       //hlASSERT( !"STOP FOR NOW" );
@@ -100,7 +100,7 @@ static c8 *GetConfigurationName( hlMem_Pool *tmp_pool, hlMem_Pool *mem_pool, hlX
       u64 number = strtoul( number_start, 0, 10 );
       
       result = hlStrCopy( mem_pool, (u64)(before_suffix-query_result) + 9, query_result );
-      snprintf( result + (u64)(before_suffix-query_result), 3+6, ".1.%05lu", number );
+      snprintf( result + (u64)(before_suffix-query_result), 3+6, ".1.%05llu", number );
       //printf( "%s <- %s\n", result, query_result );
       
     }else if( path ){
@@ -112,12 +112,12 @@ static c8 *GetConfigurationName( hlMem_Pool *tmp_pool, hlMem_Pool *mem_pool, hlX
       c8 *after_config  = hlStrAfterC( '_', config_start );
       c8 *end_config    = after_config - 1;
       
-      //printf( "%lu\n", (u64)(end_config-config_start) );
+      //printf( "%llu\n", (u64)(end_config-config_start) );
       c8 *config = hlStrCopy( tmp_pool, (u64)(end_config-config_start), config_start );
       u64 config_u64 = strtoul( config, 0, 10 );
-      //printf( "%lu ( %s -> %lu )\n", (u64)(end_config-config_start), config, config_u64 );
+      //printf( "%llu ( %s -> %llu )\n", (u64)(end_config-config_start), config, config_u64 );
       result = hlStrCopyC( mem_pool, query_result );
-      snprintf( result + (u64)(config_start - query_result), 6, "%05lu", config_u64 );
+      snprintf( result + (u64)(config_start - query_result), 6, "%05llu", config_u64 );
       
       //printf( "%s\n", result );
     }else{

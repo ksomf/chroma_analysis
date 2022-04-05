@@ -63,7 +63,7 @@ typedef double   r64;
   #include <Intrin.h>      //-- ASSEMBLY INTRINSICS --//
 #elif defined( __GNUC__ )
   r64 strtod( const c8 *str, c8 **end );
-  i64 atol( const c8 *str );
+  long atol( const c8 *str );
   hlEXTERN r64 atof( const c8 *str );
   //#include <x86intrin.h>   //-- ASSEMBLY INTRINSICS --//
 #endif
@@ -1711,7 +1711,7 @@ static hlXML *hlXMLAddChild( hlXML *parent ){
          result         = parent->obj_val.children + parent->obj_val.count++;
          result->parent = parent;
   if( parent->type == hlXML_ARR ){
-    sprintf( result->name, "%lu", parent->obj_val.count );
+    sprintf( result->name, "%llu", parent->obj_val.count );
   }
 
   return( result );
@@ -2029,7 +2029,7 @@ static hlXML_Result hlXMLQuery( hlMem_Pool *tmp_pool, hlMem_Pool *pool, hlXML *r
 }
 
 static void hlXMLPrintQueryResult( hlXML_Result *result ){
-  printf( "XML RESULT (%lu)\n", result->count );
+  printf( "XML RESULT (%llu)\n", result->count );
   for( u64 i = 0; i < result->count; ++i ){
     write( 1, result->values[ i ]->name, sizeof( result->values[ i ]->name ) );
     write( 1, "\n", 1 );
@@ -2342,7 +2342,7 @@ static void _hlJSONPrint( FILE *file, hlJSON *object, hl_json_type parent_type, 
       //printf( "0x%016llx\n", b.bits );
     }break;
     case hlJSON_NUMBER:{
-      fprintf( file, "%ld", object->num_val );
+      fprintf( file, "%lld", object->num_val );
     }break;
     case hlJSON_STRING:{
       fprintf( file, "\"%s\"", object->str_val );

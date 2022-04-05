@@ -179,6 +179,13 @@ typedef struct newPropagator {
   Feynman_Hellmann_Params feynman_hellmann_params[16];
 } newPropagator;
 
+typedef enum hl_feynhell_type {
+  hlCHROMA_OLD_SINGLE_INVERSION_MOD
+, hlCHROMA_INVERSION_MOD
+, hlCHROMA_SOURCE_MOD
+, hlCHROMA_FEYNHELL_TYPE_COUNT
+} hl_feynhell_type;
+
 typedef struct Correlator_Set {
   u64         hash;
   hlHadron    hadron_type;
@@ -197,19 +204,19 @@ typedef struct Correlator_Set {
 
 static void PrintCorrelatorSet( Correlator_Set cor_set ){
   printf( "-------------------------\n");
-  printf( "CorrelatorSet: %s (%lu)\n", hlHadronStrs[cor_set.hadron_type], cor_set.hash );
-  printf( "Dim: (%lu,%lu,%lu,%lu)\n", cor_set.dim[0], cor_set.dim[1], cor_set.dim[2], cor_set.dim[3] );
-  printf( "Hadron Numbers %lu\n", cor_set.hadron_number );
+  printf( "CorrelatorSet: %s (%llu)\n", hlHadronStrs[cor_set.hadron_type], cor_set.hash );
+  printf( "Dim: (%llu,%llu,%llu,%llu)\n", cor_set.dim[0], cor_set.dim[1], cor_set.dim[2], cor_set.dim[3] );
+  printf( "Hadron Numbers %llu\n", cor_set.hadron_number );
   printf( "Sea Kappas (%f,%f)\n", cor_set.sea_kappa1, cor_set.sea_kappa2 );
-  printf( "Sync Mom (%li,%li,%li)\n", cor_set.lattice_momentum[0], cor_set.lattice_momentum[1], cor_set.lattice_momentum[2] );
-  printf( "Extraction of %lu good cors (%lu bad)\n", cor_set.correlator_count, cor_set.bad_correlators );
+  printf( "Sync Mom (%lli,%lli,%lli)\n", cor_set.lattice_momentum[0], cor_set.lattice_momentum[1], cor_set.lattice_momentum[2] );
+  printf( "Extraction of %llu good cors (%llu bad)\n", cor_set.correlator_count, cor_set.bad_correlators );
   for( u64 prop_index = 0; prop_index < cor_set.prop_count; ++prop_index ){
     newPropagator *prop = cor_set.props + prop_index;
     printf( "\tProp Kappa %f\n", prop->prop_kappa );
     printf( "\tProp smearing sync: %s, src: %s\n", hlSmearingStrs[prop->sync_smear], hlSmearingStrs[prop->src_smear] );
     for( u64 lambda_index = 0; lambda_index < prop->lambda_count; ++lambda_index ){
       Feynman_Hellmann_Params *fhp = prop->feynman_hellmann_params + lambda_index;
-      printf( "\t\t (%f,%f), %s, q:(%li,%li,%li)\n", fhp->lambda[0], fhp->lambda[1], real_operator_identity_string[fhp->chroma_opcode], fhp->lattice_momentum_transfer[0], fhp->lattice_momentum_transfer[1], fhp->lattice_momentum_transfer[2] );
+      printf( "\t\t (%f,%f), %s, q:(%lli,%lli,%lli)\n", fhp->lambda[0], fhp->lambda[1], real_operator_identity_string[fhp->chroma_opcode], fhp->lattice_momentum_transfer[0], fhp->lattice_momentum_transfer[1], fhp->lattice_momentum_transfer[2] );
     }
   }
 }
@@ -291,7 +298,7 @@ static b32 CorrelatorSetCmp( Correlator_Set *set1, Correlator_Set *set2 ){
 
 static Correlator_Set *GetOrCopyCorrelatorSet( hlHash_Map *hash_map, Correlator_Set *correlator_sets, Correlator_Set params ){
   u64 hash = HashCorrelatorSet( &params );
-  //printf( "[DEBUG] FINDING HASH %lu\n", hash );
+  //printf( "[DEBUG] FINDING HASH %llu\n", hash );
   Correlator_Set *result = hlHashMapGet( hash_map, hash, Correlator_Set );
   if( !result ){
     //hlDEBUG_STR( "WASN'T THERE GENERATING\n" );
@@ -355,7 +362,7 @@ i32 main( i32 argc, c8 **argv ){
   hlHash_Map correlator_hashmap = hlHashMapGenerate( &mem_pool, 3*NUM_CORRELATOR_SETS );
 
 
-  printf( "PARSING: %lu FILES\n", lime_files );
+  printf( "PARSING: %llu FILES\n", lime_files );
   for( u64 lime_index = 0; lime_index < lime_files; ++lime_index ){
     c8   *path = lime_filenames[ lime_index ];
     FILE *file = fopen( path, "r" );
@@ -508,12 +515,6 @@ i32 main( i32 argc, c8 **argv ){
 #define PROP_FEYNHELL_SOURCE_MOD_LAMBDA_IMAG_PATH "ForwardProp/FermionAction/FermState/FeynHellParam/LambdaImag"
 #define PROP_FEYNHELL_SOURCE_MOD_OPERATOR_PATH    "ForwardProp/FermionAction/FermState/FeynHellParam/Operator"
 #define PROP_FEYNHELL_SOURCE_MOD_MOMENTUM_PATH    "ForwardProp/FermionAction/FermState/FeynHellParam/Momentum"
-        typedef enum hl_feynhell_type {
-          hlCHROMA_OLD_SINGLE_INVERSION_MOD
-        , hlCHROMA_INVERSION_MOD
-        , hlCHROMA_SOURCE_MOD
-        , hlCHROMA_FEYNHELL_TYPE_COUNT
-        } hl_feynhell_type;
         for( u64 feynhell_type_index = 0; feynhell_type_index < hlCHROMA_FEYNHELL_TYPE_COUNT; ++feynhell_type_index ){
           hlXML_Result lam_real_query;
           hlXML_Result lam_imag_query;
@@ -597,7 +598,7 @@ i32 main( i32 argc, c8 **argv ){
               hlASSERT( hadron_number < hadron_bin_header->data_size / ( np * 2 * sizeof( r64 ) * nt ) );
               hlASSERT( hadron_number < hadron_trev_bin_header->data_size / ( np * 2 * sizeof( r64 ) * nt ) );
             }else{
-              //printf( "%lu < %lu, %lu\n", hadron_number, hadron_bin_header->data_size, np*sizeof(r64)*nt );
+              //printf( "%llu < %llu, %llu\n", hadron_number, hadron_bin_header->data_size, np*sizeof(r64)*nt );
               hlASSERT( hadron_number < hadron_bin_header->data_size / ( np * 1 * sizeof( r64 ) * nt ) );
             }
             u64 chunk_doubles = 2 * nt;
@@ -684,7 +685,7 @@ i32 main( i32 argc, c8 **argv ){
   Correlator_Set *set = correlator_sets;
   for( Correlator_Set *set = correlator_sets; set->hash; ++set ){
     printf( "Found Next Collection ... " );
-    printf( "%lu cors (bad:%lu)\n", set->correlator_count, set->bad_correlators );
+    printf( "%llu cors (bad:%llu)\n", set->correlator_count, set->bad_correlators );
 
     hlJSON root_object = {};
     hlJSONGenerateObject( &mem_pool, &root_object, 10 );
@@ -748,9 +749,9 @@ i32 main( i32 argc, c8 **argv ){
     hlDEBUG_STR( "EXTRACTING CORS\n" );
     while( current_cor ){
       c8 *ident_str = hlPUSHARRAY( &mem_pool, 256, c8 );
-      snprintf( ident_str, 256, "%s.%lu.%lu.%lu.%lu", current_cor->ident_string, current_cor->source[ 0 ]
+      snprintf( ident_str, 256, "%s.%llu.%llu.%llu.%llu", current_cor->ident_string, current_cor->source[ 0 ]
               , current_cor->source[ 1 ], current_cor->source[ 2 ] , current_cor->source[ 3 ] );
-      //printf( "%s.%lu.%lu.%lu.%lu\n", current_cor->ident_string, current_cor->source[ 0 ]
+      //printf( "%s.%llu.%llu.%llu.%llu\n", current_cor->ident_string, current_cor->source[ 0 ]
       //        , current_cor->source[ 1 ], current_cor->source[ 2 ] , current_cor->source[ 3 ] );
       hlJSONPushStringValue( value_object, ident_str ); hlJSONPushDoubleValue( test_object, current_cor->data[ 8 ] );
       //for( u64 double_index = 0; double_index < current_chunk->r64_count; ++double_index ){
@@ -776,7 +777,7 @@ i32 main( i32 argc, c8 **argv ){
       hadron_ident_1 = real_operator_identity_string[ 15 ]; //set->hadron_number / hlARRAYCOUNT( real_operator_identity_string ) ];
       hadron_ident_2 = real_operator_identity_string[ 15 ]; //set->hadron_number % hlARRAYCOUNT( real_operator_identity_string ) ];
     }
-    u64 folder1_index = snprintf( lattice_directory, sizeof( lattice_directory ), "%lu_%lu_%lu_%lu_%f_%f"
+    u64 folder1_index = snprintf( lattice_directory, sizeof( lattice_directory ), "%llu_%llu_%llu_%llu_%f_%f"
                                 , set->dim[0], set->dim[1]
                                 , set->dim[2], set->dim[3]
                                 , set->sea_kappa1, set->sea_kappa2 );
@@ -807,14 +808,14 @@ i32 main( i32 argc, c8 **argv ){
         }
         if( op_name ){
           folder2_index += snprintf( run_identification_directory + folder2_index, sizeof( run_identification_directory ) - folder2_index
-                                    , "_%s_%f_q%+li%+li%+li"
+                                    , "_%s_%f_q%+lli%+lli%+lli"
                                     , op_name, lambda
                                     , param->lattice_momentum_transfer[ 0 ], param->lattice_momentum_transfer[ 1 ], param->lattice_momentum_transfer[ 2 ] );
           hlASSERT( folder2_index < sizeof( run_identification_directory ) );
         }
      }
     }
-    snprintf( data_point_filename, sizeof( data_point_filename ), "%s_%s_psync%+ld%+ld%+ld"
+    snprintf( data_point_filename, sizeof( data_point_filename ), "%s_%s_psync%+lld%+lld%+lld"
             , hadron_ident_1
             , hadron_ident_2
             , set->lattice_momentum[ 0 ]

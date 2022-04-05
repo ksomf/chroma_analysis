@@ -25,3 +25,9 @@ Like every single chroma user I know, i ended up writting a script which writes 
 - [chroma_parameter_generators/generate_chroma_jobs.py][chroma_parameter_generators/generate_chroma_jobs.py]: Will scan for `params.yml` in the current directory which contains the propagators to generate, or trajectories to wilson flow and will create run scripts for the current HPC cluster detected as well as mustache templates using [chroma_parameter_generators/generate_chroma_input_xml.py][generate_chroma_input_xml.py] to input the sample and propagator sources for a fully functional chroma parameter file. These jobs can be used in combination with a `filelist` containing paths to all the trajectories to run the simulation on.
 - [chroma_parameter_generators/generate_template_for_next_trajectory.py][generate_template_for_next_trajectory.py]: Is called by an active job to determine the next sample to run the simulation on, and create the final chroma parameter file for it. 
 - There is also [chroma_parameter_generators/wilson_plaq_job.sh][wilson_plaq_job.sh], [chroma_parameter_generators/wilson_plaq_runner.sh][wilson_plaq_runner.sh], and [chroma_parameter_generators/merge_plaq_results.py][merge_plaq_results.py] for calculating wilson plaquttes for the trajectories for downstram analysis.
+
+## Chroma result extraction 
+
+I used a small utility script to exit the chroma output formats as quickly as possible. In combination this is an extraction of the run parameters from the chroma psuedo-xml output and real matricies. The xml is parsed and written in JSON, with a AoS to SoA transformation grouping by parameter not by sample. In addition, all momentum and propagators get converted to human readable format. As a result the downstream analysis becomes much more staightforward to write. The compile script creats multiple executables with hard coded momentum extraction modes.
+
+## Chroma result analysis

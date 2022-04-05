@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash -exu
 
 source ../utils/compiler_flags || return 1
 

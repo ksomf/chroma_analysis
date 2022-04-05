@@ -145,7 +145,7 @@ i32 main( i32 argc, c8 **argv ){
       c8 *start_num     = hlStrAfterLastC( 'e', before_suffix );
       u64 config_num    = strtoul( start_num, 0, 10 );
           ident_str     = hlStrCopy( &mem, (u64)(before_suffix-filename) + 10, filename );
-      snprintf( ident_str + (u64)(before_suffix-filename), 10, ".1.%05lu", config_num );
+      snprintf( ident_str + (u64)(before_suffix-filename), 10, ".1.%05llu", config_num );
     }
     printf( "PARSING: %s", ident_str );
     Lime_Header *ildg_format_header = ReadLimeHeader( &file.contents );
@@ -161,7 +161,7 @@ i32 main( i32 argc, c8 **argv ){
     u64 three_volume = nx*ny*nz;
 
     Lime_Header *ildg_bin_header = ReadLimeHeader( &file.contents );
-    printf( "\nREADING LIME FILE OF SIZE: %lu, THAT IS: %lu r64 OR PER SITE: %lu\n", ildg_bin_header->data_size, ildg_bin_header->data_size / sizeof(r64), ildg_bin_header->data_size / sizeof(r64) / nx / ny / nz / nt );
+    printf( "\nREADING LIME FILE OF SIZE: %llu, THAT IS: %llu r64 OR PER SITE: %llu\n", ildg_bin_header->data_size, ildg_bin_header->data_size / sizeof(r64), ildg_bin_header->data_size / sizeof(r64) / nx / ny / nz / nt );
     hlASSERT( ildg_bin_header->data_size / sizeof(r64) == nx*ny*nz*nt*4*3*3*2 );
     BSwap64Array( (r64 *)ildg_bin_header->data, ildg_bin_header->data_size / sizeof(r64) );
     hlDEBUG_STR( "MEMORY READ\n" );
