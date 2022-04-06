@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl                   import *
+from hl_naming_convention import parameter_map
+from hl_load_json         import LoadCorrelatorJSON, LoadCorrelatorData, LoadReweightJSONAndData, GetKeyAndSources, StoreCorrelatorJSON, HasWeightFile, GetWeightFilename
+
+from ast       import literal_eval
+from functools import partial
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+
+reweight_files = args['reweight']
+reweight_datas = zip(*LoadReweightJSONAndData( reweight_files ))
+
+_, zero_cors_json = LoadCorrelatorJSON( json_files ) #Only reweight zero correlators
+progmap( 'Loading Correlators Into Memory', LoadCorrelatorData, zero_cors_json )
+print sng_report( 'Loaded Correlators Into Memory', zero_cors_json[0]['cor'].shape )
+
+lam_str = args.get('lambdas','1e-10')
+if '[' in lam_str:
+  lams = literal_eval( lam_str )
+elif '{' in lam_str:
+  begin,end,num = lam_str.split(',')
+  begin,end,num = literal_eval(begin[1:]), literal_eval(end), literal_eval(num[:-1])
+  lams = np.linspace( end, begin, num, endpoint=False ).tolist()
+else:
+  lams = [float( lam_str )]
+lams = lams + map(Neg,lams)
+
+def sum_forwards( xs ):
+  res = np.zeros( xs.shape )
+  res[0] = xs[0]
+  for i in range(1,xs.shape[-1]):
+    res[i] = res[i-1] + xs[i]
+  return res
+def sum_backwards( xs ):
+  res = np.zeros( xs.shape )
+  res[0] = xs[0]
+  for i in range(1,xs.shape[-1]):
+    res[i] = res[i-1] + xs[-i]
+  return res
+def rollbackwards( lattice, source ):
+  return np.roll( np.roll( np.roll( np.roll( lattice, -source[0], 3 ), -source[1], 2 ), -source[2], 1 ), -source[3], 0 )
+def ConstructReweightCor( prog, zero_cor_spin_pair, rwght_json, rwght_data, lams ):
+  prev_cor = {}
+  for zero_cor in zero_cor_spin_pair:
+    for lam in lams:
+      new_cor            = dict( zero_cor )
+      new_cor['op']      = rwght_json['op']
+      new_cor['lambdas'] = [ lam ]
+      new_cor['type']    = 'quark1_plus_quark2'
+      new_cor['weight_prefix'] = rwght_json['shift']
+      new_cor['extraction']['prop'] = [ 
+        { 'lambdas':new_cor['lambdas'], 'op':new_cor['op'] }
+      , { 'lambdas':new_cor['lambdas'], 'op':new_cor['op'] }
+      ]
+      if 'noupdate' in args and HasWeightFile( new_cor ):
+        prev_cor = { 'weight' : np.fromfile( GetWeightFilename(new_cor), dtype=np.float64 ) }
+      else:
+        keys, sources      = GetKeyAndSources( new_cor )
+        key_indexes        = [ rwght_json['keys'].index(k) for k in keys ]
+        momentum           = np.asarray( new_cor['momentum'] )
+        if 'forced_momentum_transfer' in args:
+          momentum = np.asarray( literal_eval( args['forced_momentum_transfer'] ) )
+        nx, ny, nz, nt     = new_cor['dim']
+        xs, ys, zs         = np.arange(nx),np.arange(ny),np.arange(nz)
+        zv, yv, xv         = np.meshgrid( zs, ys, xs )
+        q_momentum         = 2.0*momentum  # LOWEST ENERGY STATE WILL HAVE BREIT FRAME KINEMATICS p'=-p so need q=+-2p
+
+        if q_momentum[0] == 0.0 and q_momentum[1] == 0.0 and q_momentum[2] == 0.0: #DON'T HAVE STATE SPLITTING
+          q_mom_stamp = np.cos( xv*q_momentum[0] + yv*q_momentum[1] + zv*q_momentum[2] )
+        else:
+          q_mom_stamp = 2.0*np.cos( xv*q_momentum[0] + yv*q_momentum[1] + zv*q_momentum[2] )
+        if 'weight' in prev_cor:
+          new_cor['weight'] = prev_cor['weight']
+        else:
+          if new_cor['hadron'].count('g') == 2:
+            new_cor['weight'] = np.zeros( (len(keys),1,nt) )
+          else:
+            new_cor['weight'] = np.zeros( (len(keys),2,nt) )
+          weights = np.zeros( (len(sources),nt) )
+          for i,(key_index,source) in enumerate(zip(key_indexes,sources)):
+            if not i % 100:
+              prog( i, len(keys) )
+            reweight_at_origin = rollbackwards( rwght_data[key_index,:,:,:,:], source )
+            time_slice_weights = np.sum( reweight_at_origin[:,:,:,:] * q_mom_stamp[:,:,:], (1,2,3) )
+            weights[i,:] = time_slice_weights
+            #new_cor['weight'][i,0,:] = sum_forwards( time_slice_weights )
+            #if new_cor['hadron'].count('g') != 2:
+            #  new_cor['weight'][i,1,:] = sum_backwards( time_slice_weights )
+          print np.mean( weights, 0 ).tolist(), np.std( weights, 0 ).tolist()
+          exit(1)
+        StoreCorrelatorJSON( new_cor )
+        prev_cor = new_cor
+
+keys = [ 'kappas', 'dim', 'momentum' ]
+zero_cor_spin_pairs = Partition( partial(SubsetEqual,keys), zero_cors_json )
+reweight_args = [ (zero_cor_spin_pair, r_json, r_data, lams) for r_json,r_data in reweight_datas
+                                                             for zero_cor_spin_pair in zero_cor_spin_pairs ]
+progprogmap( 'Creating Modified Cors', lambda a,b: ConstructReweightCor(a,*b), reweight_args )
+print sng_report( 'Created Modified Cors', len(reweight_args) )

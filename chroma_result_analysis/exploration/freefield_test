@@ -1,0 +1,28 @@
+#! /bin/env python
+
+from hl import *
+from hl_plot import *
+
+Z = 1.0
+T = 64
+delta_E = 0.05
+
+cor = lambda Z, E, xs:  Z * np.exp( - E * xs )
+pion = lambda Z, E, xs: cor(Z,E,xs) + cor(Z,E,T-xs)
+
+xs = np.linspace( 0, T, 1000 )
+
+def get_r( m ):
+  #print xs
+  y = pion( Z, m, xs )
+  y2 = pion( Z*1.3, m+delta_E, xs )
+  
+  get_effmass  = lambda cor: np.log( np.abs( np.divide( cor, np.roll(cor,-1) ) ) )
+  
+  ym = get_effmass( y )
+  y2m = get_effmass( y2 )
+  r = get_effmass( y2 / y )
+  return r
+
+#ChromaPlot( [{'x':xs,'y':ym},{'x':xs,'y':y2m}], save='first.png' )
+ChromaPlot( [{'x':xs,'y':get_r(r),'fmt':'-'} for r in [ 0.4, 0.2, 0.1, 0.05, 0.025 ] ], save='second.png' )

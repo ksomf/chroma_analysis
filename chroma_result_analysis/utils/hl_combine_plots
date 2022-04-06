@@ -1,0 +1,35 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl                    import *
+from hl_naming_conventions import parameter_map
+from hl_plot               import ChromaPlot
+from hl_ratios             import cor_id, cor_id_dict
+
+from ast       import literal_eval
+from functools import partial
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'yml' )
+if 'xlims' in args:
+  args['xlims'] = literal_eval(args['xlims'])
+
+datas = map( LoadJSONFile, json_files )
+
+shifts  = list(set(flatten([d.keys() for d in datas])))
+hadrons = list(set(flatten([d[s].keys() for s in shifts for d in datas if s in d ])))
+ops     = list(set(flatten([d[s][h].keys() for s in shifts for h in hadrons for d in datas if s in d and h in d[s] ])))
+
+print shifts
+print hadrons
+print ops
+
+for shift in shifts:
+  data_of_same_shift = [ d[shift] for d in datas if shift in d ]
+  for hadron in hadrons:
+    data_of_same_hadron_and_shift = [ d[hadron] for d in data_of_same_shift if hadron in d ]
+    for op in ops:
+      data_of_same_op_hardon_and_shift = [ d[op] for d in data_of_same_hadron_and_shift if op in d ]
+      if len(data_of_same_op_hardon_and_shift) > 1:
+        args['save'] = '_'.join([ args['prefix'],shift,hadron,op ])
+        ChromaPlot( data_of_same_op_hardon_and_shift, **args )

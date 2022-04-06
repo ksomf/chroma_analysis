@@ -1,0 +1,22 @@
+#!/bin/env python
+
+mom2_max = 17
+qis = range(8)
+ms  = range(-5,6)
+
+dot = lambda (a1,a2,a3), (b1,b2,b3): (a1*b1 + a2*b2 + a3*b3)
+q2  = lambda q: dot(q,q)
+omega = lambda p, q: 2 * dot(p,q) / float(q2(q))
+
+momenta = [ (a,b,c) for a in ms for b in ms for c in ms if a**2 + b**2 + c**2 < mom2_max and abs(a)+abs(b)+abs(c)<6 ]
+qs = [ (a,b,c) for a in qis for b in qis for c in qis if a >= b and b >= c ]
+
+qs = filter( lambda xs: xs != (0,0,0), qs )
+qs = filter( lambda xs: xs[-1] == 0, qs )
+qs = sorted( qs, key=lambda xs: q2(xs) )
+
+wss = [ sorted(list(set([ abs(omega(p,q)) for p in momenta ]))) for q in qs ]
+
+for q,ws in zip(qs,wss):
+  if len(filter(lambda w: w , ws)):
+    print q, q2(q), ws

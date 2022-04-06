@@ -1,0 +1,38 @@
+#!/bin/env python
+
+from hl import *
+from hl_plot import *
+
+lims = [-3,3]
+params = { 'xlims':lims, 'ylims':lims, 'loc':'best', 'xlabel':'$\\frac{p_xL}{2\pi}$', 'ylabel':'$\\frac{p_yL}{2\pi}$', 'title':'$T_{33}(\\omega,Q^2=4.6\\ GeV^2)$ for ${qL}/{2\pi}=(4,1,0)$ and $p_z = 0$', 'fs':24 }
+
+plot_packets = []
+
+r = range(-2,3)
+pairs = [ (i,j) for i in r for j in r if i**2+j**2<=5 ]
+xs, ys = zip(*pairs)
+plot_packets.append({ 'x':xs, 'y':ys })
+
+
+
+
+Q = [ 4, 1 ]
+Q2 = 17.0
+def line_of_constant_w( w, Q, fmt, c ):
+  yintercept = w * Q2 / (2*Q[0])
+  xintercept = w * Q2 / (2*Q[1])
+  p = lambda x: (x,yintercept * ( 1.0 - x / xintercept ),)
+  s,e = p(lims[0]), p(lims[1],)
+  column_label = (e[0]+.05,e[1]-.05,'$\\omega='+str(w)+'$')
+  
+  return dict(zip(['x','y'],zip(*[s,e])),fmt=fmt,cl=column_label,c=c)
+  #return [[-xintercept,2*yintercept], [xintercept,0], [xintercept,-2*yintercept], [-xintercept,0]]
+  
+plot_packets.append( line_of_constant_w(  1.00, Q, '-' , 1 ) )
+plot_packets.append( line_of_constant_w(  0.66, Q, '--', 2 ) )
+plot_packets.append( line_of_constant_w(  0.33, Q, '--', 3 ) )
+plot_packets.append( line_of_constant_w( -1.00, Q, '-' , 1 ) )
+plot_packets.append( line_of_constant_w( -0.66, Q, '--', 2 ) )
+plot_packets.append( line_of_constant_w( -0.33, Q, '--', 3 ) )
+
+ChromaPlot( plot_packets, save='talks/omegascatter.png', **params )

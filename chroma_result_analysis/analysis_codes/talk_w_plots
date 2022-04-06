@@ -1,0 +1,207 @@
+#!/bin/env python
+
+from hl import *
+from hl_plot import *
+from collections import Counter
+
+hbarc = .197 #GeV nm
+d = LoadJSONFile( 'w_data.dat' )
+positive_even_deg4_poly = 'lambda x,a1,a2: np.exp(-a1)*(x**2+np.exp(-np.abs(a2))*x**4)'
+positive_even_deg4_coefs = lambda a1, a2: [ np.exp(-a1), np.exp(-a1)*np.exp(-np.abs(a2)) ]
+
+def replacer( s ):
+  for t,f in [ ( 'sqi' , 'synthetic_quark_interference' )
+             , ( 'sumd', 'synthetic_quark1_minus_quark2' )
+             , ( 'umd' , 'quark1_minus_quark2' )
+             , ( 'upd' , 'quark1_plus_quark2' )
+             , ( 'u'   , 'quark1' )
+             , ( 'd'   , 'quark2' )
+             , ( 'uns' , 'unsubtracted' )
+             , ( 'sub' , 'subtracted' ) ]:
+    s = s.replace( f, t )
+  return s
+
+##-- THE Q2 CONSTANT VS W PLOTS --##
+plot_packets = []
+Q2GeVs = []
+for Q2 in [ 5, 10, 13, 17, 20, 25, 34, 45, 58 ]:
+  ws, Ts = d['Tsubtracted'][str((32, 0.074, 0.1209, 'nucleon', 'g3', 'q_sep', 'synthetic_quark1_minus_quark2', float(Q2)))]
+  Ts_mean, Ts_std = mean_var( Ts )
+  mask = ws < 1.0
+  fit = BootFitCurve1D( ws[mask], np.swapaxes(Ts[mask,:],0,1), Ts_std[mask], positive_even_deg4_poly, range=MinMax(ws[mask],0) )
+  Q2Gev = Q2 * (2*np.pi/32.0)**2 * (hbarc/0.074)**2
+  Q2GeVs.append( Q2Gev )
+
+  params = { 'xlims':[0.0,1.2], 'ylims':[-.1,2], 'xlabel':'$\\omega = \\frac{2p\\cdot q}{q^2}$', 'title':'$\\left(T^{uu-dd}_{33}(\\omega,q^2) - T^{uu-dd}_{33}(0,q^2)\\right)$ at $q^2='+str(np.round(Q2Gev,2))+' (GeV^2)$', 'fs':20 }
+  plot_packet2    = { 'x':ws, 'y':Ts_mean, 's':Ts_std          , 'l':'$q^2=' + str(np.round(Q2Gev,2)) + ' (GeV^2)$' }
+  plot_packets.append(plot_packet2)
+  plot_packet     = { 'x':ws, 'y':Ts_mean, 's':Ts_std                                       }
+  plot_packet_fit = { 'x':ws, 'y':Ts_mean, 's':Ts_std, 'f':fit                              }
+  print ws.shape, Ts.shape
+  ChromaPlot( [plot_packet]    , save='talks/T_{}.eps'    .format(Q2), **params )
+  ChromaPlot( [plot_packet_fit], save='talks/T_{}_fit.eps'.format(Q2), **params )
+params = { 'xlims':[0.0,1.5], 'ylims':[-0.5,6.0], 'xlabel':'$\\omega = \\frac{2p\\cdot q}{q^2}$', 'title':'$\\left(T^{uu-dd}_{33}(\\omega,q^2) - T^{uu-dd}_{33}(0,q^2)\\right)$', 'fs':20, 'displace':0.01, 'loc':'best'  }
+#params = { 'xlims':[0.0,1.1], 'ylims':[-1.0,3.0], 'xlabel':'$\\omega = \\frac{2p\\cdot Q}{q^2}$', 'title':'$\\left(T^{uu-dd}_{33}(\\omega,q^2) - T^{uu-dd}_{33}(0,q^2)\\right)$, $q^2$ from $'+str(np.round(min(Q2GeVs),2))+'$ to $'+str(np.round(max(Q2GeVs),2))+'$ $(GeV^2)$', 'fs':20, 'displace':0.01, 'loc':'best'  }
+#print len( flatten([ d['x'].tolist() for d in plot_packets ]) )
+ChromaPlot( plot_packets, save='talks/Tcomb.eps', **params )
+
+mask = {}
+##-- THE MOMENTS PLOTS --##
+for moment in [ 1,3 ]:
+  all_Q2s = []
+  all_xmsbarQ = []
+  plot_packets = []
+  for (label,triplet) in [('$32^3\\times64$, $a=0.074fm$',(32, 0.074, 0.1209,)),('$48^3\\times96$, $a=0.068fm$',(48, 0.068, 0.1209),),('$32^3\\times64$, $a=0.0818fm$',(32, 0.0818, 0.11993),)]:
+    Q2s, xmsbarQ, xmsbar2 = d['moments'][str(triplet+('nucleon', 'g3', 'synthetic_quark1_minus_quark2', moment))]
+    xmsbarQ_mean, xmsbarQ_std = mean_var( xmsbarQ )
+    if moment == 1:
+      mask[triplet] = xmsbarQ_mean > -0.1
+    Q2s = Q2s[mask[triplet]]
+    xmsbarQ = xmsbarQ[mask[triplet]]
+    xmsbarQ_mean, xmsbarQ_std = mean_var( xmsbarQ )
+    all_Q2s     = all_Q2s + Q2s.tolist()
+    all_xmsbarQ = all_xmsbarQ + xmsbarQ.tolist()
+    xmsbarQ_mean, xmsbarQ_std = mean_var( xmsbarQ )
+    plot_packet = { 'x':Q2s, 'y':xmsbarQ_mean, 's':xmsbarQ_std, 'l':label }
+    plot_packets.append( plot_packet )
+  Q2s = np.asarray( all_Q2s )
+  ind = Q2s.argsort()
+  Q2s = Q2s[ind]
+  xmsbarQ = np.asarray( all_xmsbarQ )[ind]
+  xmsbarQ_mean, xmsbarQ_std = mean_var( xmsbarQ )
+  Q2_17_index = 5
+  assert( np.isclose( Q2s[Q2_17_index], 4.6, atol=.1 ) )
+
+  nb = 200
+  valerr = lambda mean, std: mean + np.random.standard_normal((nb)) * std
+  mu = 2 #GeV
+  LambdaMS = valerr(0.218,0.024) #GeV
+  b0 = 9.0 / 4.0 #the coefficient of g^3/4pi^2 of Beta = 1/4 * ( 11/3 N - 2/3 n_f ) for SU(N) with n_f flavours
+  gamma = lambda J: 2.0/3.0 * ( 1.0 - 2.0 / (J * (J+1)) + 4.0 * sum( 1.0/k for k in range(2,J+1) ) )
+  Qs = np.sqrt( Q2s )
+  J2 = (moment+1)/2+1
+  pow = gamma(J2) / (2*b0)
+  fit = []
+  for ib in range(nb):
+    scaling = lambda Q2, a: a * np.power( ( np.log( np.sqrt(Q2) / LambdaMS[ib] ) / np.log( mu / LambdaMS[ib] ) ), pow )
+    fit.append(FitCurve1D( Q2s[Q2_17_index:], xmsbarQ[Q2_17_index:,ib], xmsbarQ_std[Q2_17_index:], scaling ))
+  fit = np.asarray(fit)[:,0]
+  print fit.shape, mean_var(fit,0)
+  func = 'lambda x, fit, LambdaMS, mu, pow: fit / np.power( ( np.log( np.sqrt(x) / LambdaMS ) / np.log( mu / LambdaMS ) ), pow )'
+  #print np.mean(eval(func)(4.0,fit,LambdaMS[0],mu,pow))
+  #fit_mean = np.mean(fit)
+  #func2 = lambda x: np.mean(fit) / np.power( ( np.log( np.sqrt(x) / np.mean(LambdaMS) ) / np.log( mu / np.mean(LambdaMS) ) ), pow )
+  #xs   = np.linspace(0,10)
+  #vals = func2(xs)
+  func_boot = np.zeros( (200,4) )
+  func_boot[:,0] = fit[:]
+  func_boot[:,1] = LambdaMS[:]
+  func_boot[:,2] = mu
+  func_boot[:,3] = pow
+  fit = { 'function':func, 'boot':func_boot, 'type':'function', 'range':[Q2s[Q2_17_index],Q2s[-1]] }
+  plot1_packets = [{ 'x':[Q2s[Q2_17_index]], 'y':[xmsbarQ_mean[Q2_17_index]], 's':[xmsbarQ_std[Q2_17_index]]            }]
+  plot2_packets = plot_packets
+  plot3_packets = plot_packets + [{'fit':fit}]
+  if moment == 1:
+    fmt = 'talks/x{}.eps'
+    params = { 'xlims':[1,20], 'ylims':[-0.2,0.8], 'xlabel':'$q^2 (GeV^2)$', 'ylabel':'$\\left\\langle x \\right\\rangle^{u-d}$',                                                 'fs':20 }
+    #params = { 'xlims':[1,20], 'ylims':[-0.2,0.8], 'xlabel':'$q^2 (GeV^2)$', 'ylabel':'$\\left\\langle x \\right\\rangle^{u-d}$', 'title':'Momentum Fraction $MSBAR$ at $Q GeV$', 'fs':20 }
+  else:
+    fmt = 'talks/x3_{}.eps'
+    params = { 'xlims':[1,20], 'ylims':[-0.2,0.8], 'xlabel':'$q^2 (GeV^2)$', 'ylabel':'$\\left\\langle x^3 \\right\\rangle^{u-d}$',  'fs':20 }
+  ChromaPlot( plot1_packets, save=fmt.format(1), **params )
+  ChromaPlot( plot2_packets, save=fmt.format(2), **params )
+  ChromaPlot( plot3_packets, save=fmt.format(3), **params )
+
+#for k in  d['Tw'].keys():
+#  print k
+plots = [ ('T^{uu}_1(\\omega={0},q^2)'               , 'quark1'                       , [-3.5,0.0], [-3.5,0.0] )
+        , ('T^{dd}_1(\\omega={0},q^2)'               , 'quark2'                       , [-2.5,0.0], [-2.5,0.0] )
+        , ('T^{(u+d)(u+d)}_1(\\omega={0},q^2)'       , 'quark1_plus_quark2'           , [-6.0,0.0], [-6.0,0.0] )
+        , ('T^{(u-d)(u-d)}_1(\\omega={0},q^2)'       , 'quark1_minus_quark2'          , [-6.0,0.0], [-6.0,0.0] )
+        , ('\\frac{1}{2}T^{ud+du}_1(\\omega={0},q^2)', 'synthetic_quark_interference' , [-0.3,0.2], [-1.0,0.5] )
+        , ('T^{uu-dd}_1(\\omega={0},q^2)'            , 'synthetic_quark1_minus_quark2', [-1.5,1.0], [-1.5,1.0] )
+        ]
+for data_type, omega in [ ('unsubtracted',0.0), ('unsubtracted',0.4), ('unsubtracted',0.8), ('subtracted',0.4), ('subtracted',0.8) ]:
+  for l, type, ylims, ylims_omega_0 in plots:
+    params = { 'xlims':[0,16], 'ylims':ylims, 'xlabel':'$q^2 (GeV^2)$', 'fs':20 }
+    plot_packets = []
+    for (label,triplet) in [('$32^3\\times64$, $a=0.074fm$',(32, 0.074, 0.1209,)),('$48^3\\times96$, $a=0.068fm$',(48, 0.068, 0.1209),),('$32^3\\times64$, $a=0.0818fm$',(32, 0.0818, 0.11993),)]:
+  #    Q2s, Ts = d['Tw'][str((32,0.074,0.1209,'nucleon','g3',data_type,type,omega))]
+      Q2s, Ts = d['Tw'][str(triplet+('nucleon', 'g3', data_type, type,omega))]
+      Q2s = Q2s * (2*np.pi/triplet[0])**2 * (hbarc/triplet[1])**2 
+      Ts_mean, Ts_std = mean_var( Ts )
+      plot_packet = { 'x': Q2s, 'y':Ts_mean, 's': Ts_std, 'l':label }
+      plot_packets.append(plot_packet)
+    if omega == 0.0:
+      params['ylims'] = ylims_omega_0
+    if data_type == 'unsubtracted':
+      params['title'] = '$'+l.replace('{0}',str(omega))+'$'
+    elif data_type == 'subtracted':
+      if l.count('T') > 1:
+        params['title']='$\\left('+l.replace('{0}',str(omega))+'\\right) - \\left(' + l.replace('{0}',str(0)) + '\\right)$'
+      else:
+        params['title']='$'+l.replace('{0}',str(omega))+' - '+l.replace('{0}',str(0))+'$'
+    ChromaPlot( plot_packets, save=replacer('talks/Texp_sep_{}_{}_{}.eps'.format(type,data_type,omega)), **params )
+  
+
+minimum_points_per_w = 3
+maxq = 10.0
+for bin_rounding_decimals in [1,2]:
+  for data_type in ['subtracted','unsubtracted']:
+    for offset_c, title, type in [ (-0.2, '\\frac{1}{2}T^{ud+du}_1(\\omega,q^2)', 'synthetic_quark_interference') 
+                                 , (-2.0, 'T^{uu-dd}_1(\\omega,q^2)'            , 'synthetic_quark1_minus_quark2') ]:
+                                 #, (-3.0, 'T^{(u-d)(u-d)}_1(\\omega,q^2)'       , 'quark1_minus_quark2') 
+                                 #, (-3.0, 'T^{(u+d)(u+d)}_1(\\omega,q^2)'       , 'quark1_plus_quark2')
+                                 #, (-3.0, 'T^{uu}_1(\\omega,q^2)'               , 'quark1')
+                                 #, (-2.0, 'T^{dd}_1(\\omega,q^2)'               , 'quark2') ]:
+      data = {}
+      for (label,triplet) in [('$32^3\\times64$, $a=0.074fm$',(32, 0.074, 0.1209,)),('$48^3\\times96$, $a=0.068fm$',(48, 0.068, 0.1209),),('$32^3\\times64$, $a=0.0818fm$',(32, 0.0818, 0.11993),)]:
+        for k in filter( lambda xs: eval(xs)[0:3] == triplet and eval(xs)[-3] == data_type and eval(xs)[-2] == type, d['Tw'].keys() ):
+          w = np.round( eval(k)[-1], bin_rounding_decimals )
+          if w < 1.0:
+            Q2s, Ts = d['Tw'][k]
+            Q2s = Q2s * (2*np.pi/triplet[0])**2 * (hbarc/triplet[1])**2 
+            for i,Q2 in enumerate(Q2s.tolist()):
+              data[ (w,Q2) ] = Ts[i]
+      c = Counter( map( Fst, data.keys() ) )
+      ws = map( Fst, c.most_common( len( filter( lambda xs: xs >= minimum_points_per_w, map(Snd, c.most_common()) ) ) ) )
+      plot_packets = []
+
+      if bin_rounding_decimals == 2:
+        ws = filter( lambda w: w in [ 0.2, 0.4, 0.6, 0.8 ], ws )
+      for i,w in enumerate(sorted(ws)):
+        keys = filter( lambda xs: xs[0] == w, data.keys() )
+        Qs, Ts = map( np.asarray, zip( *[ (Q,data[(w,Q)]) for _,Q in keys ] ) )
+        Tsm, Tss = mean_var( Ts )
+        mask = Tss < 5.0
+        Qs, Tsm, Tss = Qs[mask], Tsm[mask], Tss[mask]
+        offset = offset_c * i
+        y_guide = offset
+        if data_type == 'unsubtracted' :
+          if type == 'synthetic_quark1_minus_quark2':
+            y_guide = y_guide - 0.8
+          elif type == 'quark1_minus_quark2':
+            y_guide = y_guide - 4.2
+          elif type == 'quark1_plus_quark2':
+            y_guide = y_guide - 4.6
+          elif type == 'quark1':
+            y_guide = y_guide - 2.5
+          elif type == 'quark2':
+            y_guide = y_guide - 1.9
+        plot_packet  = { 'x':Qs, 'y':Tsm+offset, 's':Tss, 'c':i }
+        plot_packet2 = { 'x':[0.0,maxq], 'y':[y_guide,y_guide], 'c':i, 'fmt':'--', 'cl':(maxq+0.05,y_guide,'$\\omega='+str(w)+'$') }
+        #plot_packet3 = {                                        'c':i,             'yl':(0.0 +0.05,y_guide,'$0.0$') }
+        #plot_packet4 = {                                        'c':i,             'yl':(0.0 +0.05,y_guide-offset_c/2,'${}$'.format(-offset_c/2)) }
+        #plot_packet5 = {                                        'c':i,             'yl':(0.0 +0.05,y_guide+offset_c/2,'${}$'.format( offset_c/2)) }
+        plot_packets.append( plot_packet  )
+        plot_packets.append( plot_packet2 )
+        #plot_packets.append( plot_packet3 )
+        #plot_packets.append( plot_packet4 )
+        #plot_packets.append( plot_packet5 )
+      params = { 'xlims':[0,maxq], 'xlabel':'$q^2 (GeV^2)$', 'title':'${}_{}$'.format(title,'{'+data_type+'}'), 'fs':20, 'ylimmod':-offset_c/2.0 }
+      ChromaPlot( plot_packets, save=replacer('talks/Texp_{}_{}_{}.eps'.format(type,data_type,bin_rounding_decimals)), **params )
+
+
+#for a in d['T0'].keys():
+#  print a

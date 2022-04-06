@@ -1,0 +1,75 @@
+#!/bin/env python
+
+from hl           import *
+from hl_load_json import LoadCorrelatorJSON, LoadCorrelatorBootstraps, StoreCombinationCorrelator
+from hl_ratios    import *
+from itertools import groupby
+import copy
+
+
+I  = np.diag( [ 1.0     , 1.0,  1.0,  1.0 ] )
+g0 = np.diag( [ 1.0+0.0j, 1.0, -1.0, -1.0 ] )
+g1 = np.fliplr( g0 )
+g2 = np.fliplr( np.diag( [ -1.0j, 1.0j, 1.0j, -1.0j ] ) )
+g3 = np.asarray( [ [  0.0j, 0.0, 1.0,  0.0 ]
+                 , [  0.0 , 0.0, 0.0, -1.0 ]
+                 , [ -1.0 , 0.0, 0.0,  0.0 ]
+                 , [  0.0 , 1.0, 0.0,  0.0 ] ] )
+gamma = [ g0, g1, g2, g3 ]
+g5 = 1.0j * reduce( np.dot, gamma )
+spin_up_projector       = (I+1.0j*np.dot(g3,g5))
+spin_down_projector     = (I-1.0j*np.dot(g3,g5))
+pos_parity_projector    = (I+g0)/2.0
+pos_spin_up_projector   = np.dot( pos_parity_projector, spin_up_projector   )
+pos_spin_down_projector = np.dot( pos_parity_projector, spin_down_projector )
+
+def four_dot( four_vec1, four_vec2 ):
+  return four_vec1[0]*four_vec2[0] - four_vec1[1]*four_vec2[1] - four_vec1[2]*four_vec2[2] - four_vec1[3]*four_vec2[3]
+slash    = lambda four_vec: four_dot( four_vec, gamma )
+sigmavec = lambda mu, vec:  np.dot(gamma[mu],slash(vec)) - np.dot(slash(vec),gamma[mu])
+trace    = lambda mat: np.sum(np.diag(mat))
+tracemul = lambda xs: trace(reduce( np.dot, xs ))
+def dispersion_relation( four_mom ):
+  res = np.copy( four_mom )
+  res[0]  = np.sqrt(np.sum(res**2))
+  return res
+
+def getAltKinematics( pp, p ):
+  P, q = (pp+p)/2.0, (pp-p)
+  q2   = four_dot( q, q )
+  return P, q, q2
+def GluonTensorFF( mass, mu, nu, pp, p, Gamma=I ):
+  P, q, q2        = getAltKinematics( pp, p )
+  sync_prop       = slash(pp) + mass*I
+  src_prop        = slash(p)  + mass*I
+  fraction_factor = ( I / 2.0 ) / np.sqrt( 2*pp[0] * 2*p[0] * 2*(pp[0]+mass) * 2*(p[0]+mass) )
+  FFs = [ gamma[mu]*P[nu] + gamma[nu]*P[mu]
+        , (sigmavec(mu,q)*P[nu] + sigmavec(nu,q)*P[mu])/(2*mass)
+        , (q[mu]*q[nu] + q[nu]*q[mu]) / mass * I ]
+  _projector = lambda inner: [ Gamma, sync_prop, inner, src_prop, fraction_factor ]
+  _project_and_tracemul = lambda inner: tracemul( _projector( inner ) )
+  res = np.asarray(map( _project_and_tracemul, FFs ))
+  if not np.all( np.absolute(res.imag) <= 1e-10 ):
+    print 'bad combinations, contains complex values'
+    print res
+    exit(1)
+  return res.real, q2
+
+def GluonIrrep1( mass, pp, p, Gamma=I ):
+  temporal_component, q2 = GluonTensorFF( mass, 0, 0, pp, p, Gamma )
+  spatial_component_1, _ = GluonTensorFF( mass, 1, 1, pp, p, Gamma )
+  spatial_component_2, _ = GluonTensorFF( mass, 2, 2, pp, p, Gamma )
+  spatial_component_3, _ = GluonTensorFF( mass, 3, 3, pp, p, Gamma )
+  return temporal_component + ( spatial_component_1 + spatial_component_2 + spatial_component_3 ) / 3.0, q2
+
+def GluonIrrep2( mass, i, pp, p, Gamma=I ):
+  return GluonTensorFF( mass, 0, i, pp, p, Gamma )
+
+tmp_mass = 0.97
+momenta = lambda a,b,c: dispersion_relation(np.asarray([tmp_mass,2*np.pi/24*a,2*np.pi/24*b,2*np.pi/24*c]))
+zero_mom = momenta(0,0,0)
+one_mom  = momenta(1,0,0)
+print GluonIrrep1( tmp_mass, zero_mom, zero_mom, Gamma=pos_spin_up_projector )
+print GluonIrrep1( tmp_mass, one_mom , one_mom , Gamma=pos_parity_projector )
+print GluonIrrep2( tmp_mass, 0, one_mom, one_mom, Gamma=pos_spin_up_projector )
+print tracemul([ pos_spin_up_projector, slash(one_mom) + tmp_mass*I ]) / ( tmp_mass + one_mom[0] )

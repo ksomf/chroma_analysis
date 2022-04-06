@@ -1,0 +1,251 @@
+#!/bin/env python
+
+from hl import *
+from hl_gamma          import *
+from itertools import groupby
+import copy
+
+tmp_mass = 0.997
+conversion_factor = (2*np.pi)/24
+minkowski_momenta = lambda p1, p2, p3: minkowski_dispersion_relation([tmp_mass,conversion_factor*p1,conversion_factor*p2,conversion_factor*p3])
+euclidean_momenta = lambda p1, p2, p3: euclidean_dispersion_relation([tmp_mass,conversion_factor*p1,conversion_factor*p2,conversion_factor*p3])
+#print EuclideanGluonTensorFF( tmp_mass, 0, 0, euclidean_momenta(0,0,0), euclidean_momenta(0,0,0), euclidean_pos_spin_up_projector )
+#print 'Test GROUP'
+#print MinkowskiGluonIrrep1( tmp_mass,    minkowski_momenta(0,0,0), minkowski_momenta(0,0,0), minkowski_pos_spin_up_projector )
+#print EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(0,0,0), euclidean_pos_parity_projector )
+#print 'First GROUP'
+#print MinkowskiGluonIrrep1( tmp_mass,    minkowski_momenta(0,0,0), minkowski_momenta(0,1,0), minkowski_pos_spin_up_projector )
+#print EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), euclidean_pos_spin_up_projector )
+#print MinkowskiGluonIrrep2( tmp_mass, 1, minkowski_momenta(0,0,0), minkowski_momenta(0,1,0), minkowski_pos_spin_up_projector )
+#print EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), euclidean_pos_spin_up_projector )
+#print MinkowskiGluonIrrep2( tmp_mass, 1, minkowski_momenta(0,0,0), minkowski_momenta(1,0,0), minkowski_pos_spin_up_projector )
+#print EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,0), euclidean_pos_spin_up_projector )
+
+#print EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(0,0,0), euclidean_pos_spin_up_projector )
+#print EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,1,0), euclidean_momenta(0,1,0), euclidean_pos_spin_up_projector )
+#print EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,1), euclidean_momenta(0,0,1), euclidean_pos_spin_up_projector )
+#print EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,0,0), euclidean_pos_spin_up_projector )
+#print EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(1,0,0), euclidean_pos_spin_up_projector )
+#print EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,1,0), euclidean_pos_spin_up_projector )
+#print EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,0,1), euclidean_pos_spin_up_projector )
+
+
+
+#unpol = euclidean_pos_parity_projector
+#pol   = euclidean_pos_parity_pol_projector
+#print 'group1'
+#print 'pol'
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,0,1), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(0,0,0), unpol, pol ))
+#print 'unpol'
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,0,1), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(0,0,0), unpol, unpol ))
+#exit(1)
+
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,0), unpol, pol ))
+#print 'unpol'
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,0,1), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,1,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,0), unpol, unpol ))
+#print 'group1b'
+#print 'pol'
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(0,0,0), unpol, pol ))
+#print 'unpol'                                                                                    
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,0,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(0,0,0), unpol, unpol ))
+#print 'group2'
+#print 'pol'
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(1,0,1), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,1,1), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,1,1), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(1,0,1), unpol, pol ))
+#print 'unpol'
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(1,0,0), euclidean_momenta(1,0,1), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,1,0), euclidean_momenta(0,1,1), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(0,1,1), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,1), euclidean_momenta(1,0,1), unpol, unpol ))
+#print 'group3'
+#print 'pol'
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(1,1,0), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,1,1), unpol, pol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,1), unpol, pol ))
+#print 'unpol'
+#print Fst(EuclideanGluonIrrep1( tmp_mass,    euclidean_momenta(0,0,0), euclidean_momenta(1,1,0), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(0,1,1), unpol, unpol ))
+#print Fst(EuclideanGluonIrrep2( tmp_mass, 1, euclidean_momenta(0,0,0), euclidean_momenta(1,0,1), unpol, unpol ))
+#exit(1)
+
+max_mom = 2
+kinematics_max = 5
+moms = range(-max_mom,max_mom+1)
+posmoms = range(max_mom+1)
+momenta = sorted([ (a,b,c) for a in moms for b in moms for c in moms ], key=lambda (a,b,c): (sum([a<0,b<0,c<0]),(abs(a)+abs(b)+abs(c))) )
+pos_momenta = sorted([ (a,b,c) for a in posmoms for b in posmoms for c in posmoms ], key = lambda (a,b,c): (a+b+c) )
+single_momenta = [(1,0,0),(0,1,0),(0,0,1)]
+
+results = []
+m3 = lambda (a,b,c): np.sqrt(np.sum(np.abs(np.asarray([a,b,c]))**2))
+combinations = sorted( [ (pp3,p3) for pp3 in momenta for p3 in momenta ], key=lambda (a,b): m3(a) < m3(b) )
+
+for pp3 in momenta: #momenta: #[ (0,0,0) ]:
+  #if sum(map(lambda x: x==0,pp3)) >= 3:
+  #if sum(map(lambda x: x==0,pp3)) >= 2:
+  pp = euclidean_dispersion_relation(np.asarray([tmp_mass]+list(2*np.pi*np.asarray(pp3)/24)))
+  ppsq = sum([a**2 for a in pp3])
+  for p3 in momenta:
+    p = euclidean_dispersion_relation(np.asarray([tmp_mass]+list(2*np.pi*np.asarray(p3)/24)))
+    psq = sum([a**2 for a in p3])
+    if ppsq < kinematics_max and psq < kinematics_max:
+      q = pp - p
+      q2 = euclidean_four_dot(q,q)
+#      results.append( (q2,'O1u',pp3,p3,Fst(EuclideanGluonIrrep1( tmp_mass,    pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_projector ))) )
+#      results.append( (q2,'O1px',pp3,p3,Fst(EuclideanGluonIrrep1( tmp_mass,    pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_polx_projector ))) )
+#      results.append( (q2,'O1py',pp3,p3,Fst(EuclideanGluonIrrep1( tmp_mass,    pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_poly_projector ))) )
+#      results.append( (q2,'O1pz',pp3,p3,Fst(EuclideanGluonIrrep1( tmp_mass,    pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_polz_projector ))) )
+#      results.append( (q2,'O2u',pp3,p3,Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_projector ))) )
+      #results.append( (q2,'O2pz',pp3,p3,Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_polz_projector ))) )
+      #results.append( (q2,'O2py',pp3,p3,Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_poly_projector ))) )
+      #results.append( (q2,'O2px',pp3,p3,Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_polx_projector ))) )
+
+      cx = Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_polx_projector ))      
+      cy = Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_poly_projector ))
+      cz = Fst(EuclideanGluonIrrep2( tmp_mass, 1, pp, p, TwoPointGamma=euclidean_pos_parity_projector, Gamma=euclidean_pos_parity_polz_projector ))
+
+      cx_non_zero = cx[0] != 0.0j and cx[1] != 0.0j
+      cy_non_zero = cy[0] != 0.0j and cy[1] != 0.0j
+      cz_non_zero = cz[0] != 0.0j and cz[1] != 0.0j
+      non_zero_xyz_count = cx_non_zero + cy_non_zero + cz_non_zero
+      non_zero_yz_count  =               cy_non_zero + cz_non_zero 
+      pxpp = np.cross( p3, pp3 )
+      #print (cx_non_zero,cy_non_zero,cz_non_zero), np.all(np.isclose(pxpp,0.0)), np.any(np.nonzero(pxpp)), np.isclose(q[1],0.0)
+      if non_zero_yz_count and np.all(np.isclose(pxpp,0.0)):
+        if cx_non_zero:
+          print 'The operator is assumed to be x depedent and with the pxpp = 0 we only have x components of cross products with pxs and ppxs, making this operator zero'
+          exit(1)
+
+        if non_zero_yz_count == 2:
+          if not np.all(np.isclose( np.abs(cy), np.abs(cz) )):
+            print 'This assumption should make both of these be multiples of each other'
+            exit(1)
+
+          if np.all(np.isclose(cy,cz)):
+            s = np.asarray([ 0, 0, 1, 1 ])
+          else:
+            s = np.asarray([ 0, 0, 1, -1 ])
+        elif non_zero_yz_count == 1:
+          if cy_non_zero:
+            s = np.asarray([ 0, 0, 1, 0 ])
+          elif cz_non_zero:
+            s = np.asarray([ 0, 0, 0, 1 ])
+
+        value = np.multiply(s[1],cx) + np.multiply(s[2],cy) + np.multiply(s[3],cz)
+        if value[0] < 0: 
+          s     = -1*s
+          value = -1.0*value
+        #results.append( (q2,'02p',pp3,p3,tuple(s.tolist()),value) )
+        #print '-----------Working-----------'
+        #print q2, pp3, p3, pxpp
+        #print (cx, cy, cz)
+        #print s, value
+        #exit(1)
+      elif non_zero_xyz_count and not np.all(np.isclose(pxpp,0.0)):
+        ##SETTING s dot pxpp = 0
+        s = np.add(pp3,p3)
+        #s = s / np.sqrt(np.sum(s**2))
+        s = np.append( [0], s )
+        value = np.multiply(s[1],cx) + np.multiply(s[2],cy) + np.multiply(s[3],cz)
+        value.real[ abs(value.real) < 1e-6] = 0.0
+        value.imag[ abs(value.imag) < 1e-6] = 0.0
+        if value[0] < 0:
+          s     = -1*s
+          value = -1.0*value
+        assert(np.isclose(value[0],value[1]))
+        #print '-----------Working-----------'
+        #print q2, pp3, p3, pxpp
+        #print (cx, cy, cz)
+        #print s, value
+        #results.append( (q2,'02p',pp3,p3,tuple(s.tolist()),value) )
+        if np.isclose(q[1],0.0) and ( not np.isclose(cx[0],cx[1]) or not np.isclose(cy[0],cy[1]) or not np.isclose(cz[0],cz[1]) ):
+          s = np.asarray(pxpp)
+          s = np.append( [0], s )
+          value = np.multiply(s[1],cx) + np.multiply(s[2],cy) + np.multiply(s[3],cz)
+          value.real[ abs(value.real) < 1e-6] = 0.0
+          value.imag[ abs(value.imag) < 1e-6] = 0.0
+          if value[0] < 0:
+            s     = -1*s
+            value = -1.0*value
+          print '-----------Working-----------'
+          print q2, pp3, p3, pxpp
+          print (cx, cy, cz)
+          print s, value
+          results.append( (q2,'O2p',pp3,p3,tuple(s.tolist()),value) )
+
+
+        
+
+
+      #if pp3 == (1,0,0) and p3 == (-1,0,0):
+      #  print pp3, p3, q2, results[-4:]
+
+results = filter( lambda (q2,op,pp,p,s,x): np.round(x,decimals=8).tolist() != [0j, 0j, 0j], results )
+#results = filter( lambda (q2,op,pp,p,s,x): np.round(x,decimals=8).tolist()[-1] == 0j, results )
+already_there = []
+def get_type(op):
+  if '1' in op:
+    res_op = 'B2mE2'
+  elif '2' in op:
+    res_op = 'ExB'
+  if 'u' in op:
+    pol = 'unpol'
+  elif 'p' in op:
+    pol = 'pol'
+  if '1' in op and 'u' in op:
+    type = 'real'
+  elif '1' in op and 'p' in op:
+    type = 'imag'
+  elif '2' in op and 'u' in op:
+    type = 'imag'
+  elif '2' in op and 'p' in op:
+    type = 'real'
+  return res_op, type, pol
+
+def make_first_positive(xs):
+  if xs[0].real < 0.0 or xs[0].real == 0 and xs[0].imag < 0.0:
+    return [ -x for x in xs ]
+  return xs
+for x in sorted(results,key=lambda (q,op,pp,p,s,c): (abs(np.round(q.real,decimals=8)),op,m3(pp))):
+#for x in  sorted(sorted(results,key=lambda (q,op,pp,p,s,c): (pp,p)), key=lambda xs: (xs[0],map(lambda a: abs(a.real), xs[-1]))):
+  q,op,pp,p,s,c = x
+  if x[0] < 2.0:
+    #print 'test', x
+    pair = (abs(np.round(q.real,decimals=8)),np.round(make_first_positive(c),decimals=8).tolist())
+    if pair not in already_there:
+      print_op, type, pol = get_type(op)
+      print ' {:<110}{:<20}{:}'.format({ "op":print_op, "pp":list(pp), "p":list(p), "data_type":type, "s":list(s) }, q, c).replace("'",'"')
+      #print '{:<100}{:<20}{:}'.format({ "op":print_op, "pp":tuple(a for a in pp), "p":tuple(b for b in p), "data_type":type, "s":s }, q, c).replace("'",'"')
+      already_there.append(pair)
+    else:
+      print_op, type, pol = get_type(op)
+      print '+{:<110}{:<20}{:}'.format({ "op":print_op, "pp":list(pp), "p":list(p), "data_type":type, "s":list(s) }, q, c).replace("'",'"')
+
+
+#mom = euclidean_momenta(0,0,0)
+#print tracemul([minkowski_pos_parity_projector,-1.0j*euclidean_slash(mom)+tmp_mass*I])

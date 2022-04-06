@@ -47,3 +47,6 @@ These are made up of several components:
 - [hl_fit](chroma_result_analysis): Fit gluon threepoint functions and extract form factors
 - [hl_threepoint_gen](chroma_result_analysis/hl_threepoint_gen): Generate gluon threepoint functions from two point and action
 - [hl_plot.py](chroma_result_analysis/hl_plot.py): Create plot yaml files that can be turned into plots using [hl_plot](chroma_result_analysis). This allows the generation of whole new plot asthetics for my entire thesis in record time.
+
+Finally this allows the extraction of the compton amplitudes using:
+- [extract_compton_amplitude](chroma_result_analysis/analysis_codes/extract_compton_amplitude): Does the final analysis combining the effectivemass ratios across all the simulations, producing the core results of my thesis.

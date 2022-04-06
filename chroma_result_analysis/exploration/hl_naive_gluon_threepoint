@@ -1,0 +1,142 @@
+#!/bin/env python
+
+from hl                   import *
+from hl_naming_convention import parameter_map
+from hl_load_json         import LoadCorrelatorJSON, LoadCorrelatorBootstraps, StoreCombinationCorrelator
+from hl_ratios            import *
+from hl_gamma             import *
+from itertools import groupby
+import copy
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+
+##-- SETUP CORRELATORS --##
+cors_json, zero_cors_json = LoadCorrelatorJSON( json_files )
+progmap( 'Loading Bootstraps Into Memory', LoadCorrelatorBootstraps, cors_json )
+print sng_report( 'Loaded Bootstraps Into Memory', cors_json[0]['boot'].shape )
+
+extra_keys = [ 'lambdas', 'momentum', 'spin', 'mom', 'threepoint', 'op', 'q', 'weight_prefix', 'match_vector', 'file_prefix', 'fit' ]
+cor_sets = Partition( partial(EqualExcept, data_keys + bookeeping_keys + extra_keys ), cors_json )
+
+for cor_set in cor_sets:
+  #for cor in cor_set:
+  #  print [ k for k in cor.keys() if k not in data_keys + bookeeping_keys + extra_keys ]
+  threept_cors, mass_cors = SplitFilter( lambda c: 'threepoint' in c, cor_set )
+  assert len(mass_cors)>0
+  #threept_cors = filter( lambda c: c['spin'] == 'up', threept_cors )
+  #print len(threept_cors), len(mass_cors)
+  masses = {}
+  for mass_cor in mass_cors:
+    masses[mass_cor['mom']] = mass_cor['eff']
+
+  combinations = []
+  nboot = len(masses.values()[0]['boot'])
+  #print { k:threept_cors[0][k] for k in filter( lambda x: x not in data_keys + bookeeping_keys, threept_cors[0].keys() ) }
+  spin_threept_pairs = Partition( partial(EqualExcept, data_keys + bookeeping_keys + ['spin']), threept_cors )
+  for spin_threept_pair in spin_threept_pairs:
+    threept_cor = spin_threept_pair[0]
+    dim = threept_cor['dim']
+    nt = dim[-1]
+    #print len(spin_threept_pair)
+    #print { k:[st[k] for st in spin_threept_pair] for k in filter( lambda x: x not in data_keys + bookeeping_keys, spin_threept_pair[0].keys() ) } 
+    up_threept, down_threept = map( Fst, SplitFilter( lambda x: x['spin']=='up', spin_threept_pair ) )
+    up_twopt_sync, down_twopt_sync = map( Get('boot') , [up_threept,down_threept] )
+    up_twopt_src , down_twopt_src  = map( Get('boot2'), [up_threept,down_threept] )
+
+    twopt_sync    = 0.5*(up_twopt_sync+down_twopt_sync).real
+    twopt_src     = 0.5*(up_twopt_src +down_twopt_src ).real
+    threept_pol   = 0.5*(up_threept['threeboot'] - down_threept['threeboot'])
+    threept_unpol = 0.5*(up_threept['threeboot'] + down_threept['threeboot'])
+
+    threept_cor['Rpol']   = NonForwardThreePointRatio( nt, threept_pol  , twopt_src, twopt_sync )
+    threept_cor['Runpol'] = NonForwardThreePointRatio( nt, threept_unpol, twopt_src, twopt_sync )
+
+    boot_combination_pol   = []
+    boot_combination_unpol = []
+    for i in range(nboot):
+      pp3, q3, p3, sync_mom2, src_mom2 = kinematics_transform( threept_cor )
+      sync_mass = masses[sync_mom2]['boot'][i][0]     
+      src_mass  = masses[src_mom2]['boot'][i][0]
+      mass      = masses[0]['boot'][i][0]
+      pp, q, p = four_kinematics_transform( sync_mass, pp3, src_mass, p3, *dim[:-1] )
+      type      = threept_cor['op']
+      base_type = type.replace('ExB_x','').replace('B2mE2','')
+
+      #if threept_cor['spin'] == 'up':
+      #  Gamma = euclidean_pos_spin_up_projector
+      #elif threept_cor['spin'] == 'down':
+      #  Gamma = euclidean_pos_spin_down_projector
+      
+      if type.endswith( 'ExB_x' ):
+        combination_pol  , q2 = EuclideanGluonIrrep2( mass, 1, pp, p, euclidean_pos_parity_projector, euclidean_pos_parity_pol_projector )
+        combination_unpol, q2 = EuclideanGluonIrrep2( mass, 1, pp, p, euclidean_pos_parity_projector, euclidean_pos_parity_projector     )
+      elif type.endswith( 'B2mE2' ):
+        combination_pol  , q2 = EuclideanGluonIrrep1( mass, pp, p, euclidean_pos_parity_projector, euclidean_pos_parity_pol_projector )
+        combination_unpol, q2 = EuclideanGluonIrrep1( mass, pp, p, euclidean_pos_parity_projector, euclidean_pos_parity_projector     )
+      else:
+        print 'unknown type', type
+      if not all([not np.iscomplex(c) or ( not np.isreal(c) and np.iscomplex(c) ) for c in combination_pol + combination_unpol ]):
+        print "unworkable combination", combination_pol + combination_unpol
+      comb_pol   = np.asarray(combination_pol)
+      comb_unpol = np.asarray(combination_unpol)
+      if all([np.iscomplex(c) for c in combination_pol]):
+        boot_combination_pol.append( ('pol','imag',comb_pol.imag.tolist()) )
+      else:
+        boot_combination_pol.append( ('pol','real',comb_pol.real.tolist()) )
+      if all([np.iscomplex(c) for c in combination_unpol]):
+        boot_combination_unpol.append( ('unpol','imag',comb_unpol.imag.tolist()) )
+      else:
+        boot_combination_unpol.append( ('unpol','real',comb_unpol.real.tolist()) )
+
+    pol_type,type,boot_combination = zip(*boot_combination_pol)
+    if np.any(boot_combination):
+      combinations.append( (threept_cor, pol_type, type, boot_combination, base_type, q2.real) )
+    pol_type,type,boot_combination = zip(*boot_combination_unpol)
+    if np.any(boot_combination):
+      combinations.append( (threept_cor, pol_type, type, boot_combination, base_type, q2.real) )
+
+  boot_combination_matrix    = np.swapaxes( np.asarray([ combination for cor,pol_type,type,combination,base_type,qsq in combinations ]), 0, 1 ).tolist()
+  combination_pseudo_inverse = np.asarray(map( np.linalg.pinv, boot_combination_matrix ))
+  __boot_ensemble            = lambda type, xs: xs.real if type == 'real' else xs.imag
+  _boot_ensemble             = lambda pol,type,xs: __boot_ensemble(type,xs['Rpol']['boot']) if pol=='pol' else __boot_ensemble(type,xs['Runpol']['boot'])
+  boot_ensemble              = np.swapaxes( np.asarray([ _boot_ensemble(pol_type,type,cor) for cor,pol_type,type,_,_,_ in combinations ]), 0, 1 )
+  print boot_ensemble.shape, combination_pseudo_inverse.shape
+  result = np.zeros( boot_ensemble.shape, dtype=boot_ensemble.dtype )
+  print combinations[0][3][0]
+  exit(1)
+  ncomb = len(combinations[0][3][0])
+  qsq   = combinations[0][-1]
+  
+  print combination_pseudo_inverse.shape, boot_ensemble.shape
+  print result.shape
+  for ib in range(nboot):
+    for ic in range(ncomb):
+      #print np.tensordot(combination_pseudo_inverse[ib,ic,:], boot_ensemble[ib], axes=1).shape
+      #print combination_pseudo_inverse[ib,ic,:].shape, boot_ensemble[ib].shape
+      result[ib,ic] = np.tensordot(combination_pseudo_inverse[ib,ic,:], boot_ensemble[ib], axes=1)
+  new_ops = 'ABCDEFG'
+  #print threept_cors[0]['momentum'], threept_cors[0]['q'], qsq
+  print np.mean( boot_combination_matrix, 0 )
+  print np.linalg.pinv( np.mean(boot_combination_matrix,0) )
+  for ic in range(ncomb):
+    new_threept_cor = copy.deepcopy(threept_cors[0])
+    new_threept_cor['R'] = result[:,ic]
+    new_threept_cor['threepointR'] = True
+    old_op = new_threept_cor['op']
+    new_threept_cor['op']  = combinations[0][-2] + new_ops[ic]
+    new_threept_cor['qsq'] = qsq
+    pp3 = np.asarray(threept_cor['momentum'])
+    q3  = np.asarray(threept_cor['q'])
+    p3      = pp3 - q3
+    sync_mom2 = int(np.sum(pp3**2)) 
+    src_mom2  = int(np.sum(p3 **2))
+    new_threept_cor['plowersq'], new_threept_cor['puppersq'] = sorted([sync_mom2,src_mom2])
+    map( lambda s: new_threept_cor.pop( s ), [ 'mom', 'threeboot_file', 'threeboot', 'boot', 'three_file', 'boot2', 'threepoint' ] )
+    new_threept_cor['spin'] = 'avg'
+    q_fmt =  'q{:+d}{:+d}{:+d}'.format( *new_threept_cor.pop('q') )
+    p_fmt = '_psync{:+d}{:+d}{:+d}'.format( *new_threept_cor.pop('momentum') )
+    _replacer = lambda str: str.replace('up','ff').replace('down','ff').replace(old_op,new_threept_cor['op']).replace(q_fmt,args['label']).replace(p_fmt,'')
+    new_threept_cor['file'] = _replacer(new_threept_cor['file'])
+    new_threept_cor['label'] = args['label']
+    new_threept_cor['weight_prefix'] = _replacer(new_threept_cor['weight_prefix'])
+    StoreCombinationCorrelator( new_threept_cor )

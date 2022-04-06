@@ -1,0 +1,537 @@
+#!/bin/env python
+
+from hl import *
+from hl_lattice_constants import *
+from hl_plot import ChromaPlot
+import multiprocessing
+import pickle
+
+plots_to_do = []
+
+def _ChromaPlot( plot_params, **kwargs ):
+  plots_to_do.append( (plot_params, kwargs) )
+def plot_runner( (plot_params,kwargs) ):
+  #print plot_params
+  ChromaPlot( plot_params, **kwargs )
+def RunChromaPlots():
+  #map( plot_runner, plots_to_do )
+  #exit(1)
+  #filter_plots = filter( lambda (d,kwargs): kwargs['save'] == .eps/nucleon_diag_lambda_spread_w_plot_synthetic_quark1_minus_quark2_g3_subtracted.eps', plots_to_do )
+  pool = multiprocessing.Pool( processes=32 )
+  #progpoolmap( 'Plotting: ', pool, plot_runner, filter_plots )
+  progpoolmap( 'Plotting: ', pool, plot_runner, plots_to_do )
+  pool.close()
+  pool.join()
+
+def get_momenta_factor( t ):
+  dim  = t[dim_index]
+  beta = t[beta_index]
+  a    = spacings[beta]
+  assert( dim[0] == dim[1] and dim[1] == dim[2] )
+  return (2 * np.pi / dim[0]) * (hbarc/a)
+def GenerateNameBlock( t ):
+  return GenerateLatticeBlock( t[beta_index], t[kappa_index][0], t[kappa_index][1], t[dim_index] )
+def changed_tuple( t, *args ):
+  res = list(t)
+  for (index,value) in args:
+    res[index] = value
+  res = tuple(res)
+  return res
+
+def GetVar( key, v ):
+  return np.asarray( map( Get(key), v ) )
+def GetTs( d, ks ):
+  Ts = np.asarray( map( lambda k: d[k], ks ) )
+  return Ts
+
+types = { 'mono'  : ['quark1']
+        , 'dbl'   : ['quark1','quark2']
+        , 'basic' : ['quark1','quark2','quark1_minus_quark2','quark1_plus_quark2'] }
+fmt = { 'nucleon' : 'nucleon_effmass_pp{}.json' 
+      , 'g5g5'    : 'g5g5_effmass_pp{}.json' }
+threept_fmt = lambda hadron, op, q: hadron + '_simple_even_{}_pp{}_' + op + '_cos_op_q+' + str(q[0]) + '+' + str(q[1]) + '+' + str(q[2]) + '_{}{}.json'
+ylims = { 'quark2':[0.0,12.0], 'quark1':[-4.0,24.0], 'quark1_minus_quark2':[-2.0,36.0] }
+
+##-- THE FACTOR OF -1 FOR ig3g5 IS FOR THE IMAGINARY LAMBDA SQUARED --##
+jobs = [
+ { 'dim':(32,32,32,64), 'beta': 5.4,  'kappas':(0.11993,0.11993)  , 'q':(4,2,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0375                ], 'hadron':'nucleon', 'extended_momenta':False }
+#, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.121095,0.120512), 'q':(4,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025         ], 'hadron':'nucleon', 'extended_momenta':False }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(7,3,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.025 , 0.05          ], 'hadron':'nucleon', 'extended_momenta':False }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(6,3,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.025 , 0.05          ], 'hadron':'nucleon', 'extended_momenta':False }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(5,3,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[         0.05          ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(5,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[         0.05          ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(4,3,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(4,2,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(4,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(3,2,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(3,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(2,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(2,0,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025         ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(1,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025         ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(1,0,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025         ], 'hadron':'nucleon', 'extended_momenta':True  }
+, { 'dim':(48,48,48,96), 'beta': 5.65, 'kappas':(0.122005,0.122005), 'q':(1,0,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0100,        0.0200 ], 'hadron':'nucleon', 'extended_momenta':False, 'extended_range':True, 'mom2_max':1  }
+, { 'dim':(48,48,48,96), 'beta': 5.65, 'kappas':(0.122005,0.122005), 'q':(1,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0100,        0.0200 ], 'hadron':'nucleon', 'extended_momenta':False, 'extended_range':True, 'mom2_max':1  }
+, { 'dim':(48,48,48,96), 'beta': 5.65, 'kappas':(0.122005,0.122005), 'q':(2,0,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125,        0.0250 ], 'hadron':'nucleon', 'extended_momenta':False, 'extended_range':True, 'mom2_max':1  }
+, { 'dim':(48,48,48,96), 'beta': 5.65, 'kappas':(0.122005,0.122005), 'q':(2,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125,        0.0250 ], 'hadron':'nucleon', 'extended_momenta':False, 'extended_range':True, 'mom2_max':1  }
+, { 'dim':(48,48,48,96), 'beta': 5.65, 'kappas':(0.122005,0.122005), 'q':(3,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125,        0.0375 ], 'hadron':'nucleon', 'extended_momenta':False, 'extended_range':True, 'mom2_max':5  }
+, { 'dim':(48,48,48,96), 'beta': 5.65, 'kappas':(0.122005,0.122005), 'q':(7,4,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125,        0.0375 ], 'hadron':'nucleon', 'extended_momenta':False, 'extended_range':True, 'mom2_max':17 }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(5,3,0), 'op':'ig3g5', 'types':types['basic'], 'lambdas':[ 0.025                 ], 'hadron':'nucleon', 'extended_momenta':True , 'factor':-1 }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(4,1,0), 'op':'ig3g5', 'types':types['basic'], 'lambdas':[ 0.025 , 0.05          ], 'hadron':'nucleon', 'extended_momenta':True , 'factor':-1 }
+, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(2,1,0), 'op':'ig3g5', 'types':types['basic'], 'lambdas':[ 0.025 , 0.05          ], 'hadron':'nucleon', 'extended_momenta':True , 'factor':-1 } 
+]
+#jobs = [
+#  { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(5,3,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[         0.05          ], 'hadron':'nucleon', 'extended_momenta':True  }
+#, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(4,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+#, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(2,1,0), 'op':'g3'   , 'types':types['basic'], 'lambdas':[ 0.0125, 0.025, 0.0375 ], 'hadron':'nucleon', 'extended_momenta':True  }
+#, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(5,3,0), 'op':'ig3g5', 'types':types['basic'], 'lambdas':[ 0.025                 ], 'hadron':'nucleon', 'extended_momenta':True , 'factor':-1 }
+#, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(4,1,0), 'op':'ig3g5', 'types':types['basic'], 'lambdas':[ 0.025 , 0.05          ], 'hadron':'nucleon', 'extended_momenta':True , 'factor':-1 }
+#, { 'dim':(32,32,32,64), 'beta': 5.5,  'kappas':(0.1209,0.1209)    , 'q':(2,1,0), 'op':'ig3g5', 'types':types['basic'], 'lambdas':[ 0.025 , 0.05          ], 'hadron':'nucleon', 'extended_momenta':True , 'factor':-1 } 
+#]
+
+lambdas = list(set( flatten( map(Get('lambdas'),jobs) ) ))
+used_omegas  = []
+dim_index = 0
+beta_index = 1
+kappa_index = 2
+hadron_index = 3
+flavour_index = 4
+op_index = 5
+omega_index = 6
+coef_index = 7
+q2_index = 8
+momenta_index = 9
+lambda_index = 10
+def key_tuple( dim, beta, kappas, hadron, flavour, op, omega, coefs, q2, momenta, lam=None ):
+  res = (dim,beta,kappas,hadron,flavour,op,omega,coefs,q2,momenta,)
+  if lam:
+    res = res + (lam,)
+  return res
+
+args, pickle_files = ArgvToArgsAndFiles( {}, 'pickle' )
+if not len(pickle_files):
+  compton_amplitude_raw = {}
+  compton_amplitude_lambda_averaged = {}
+  compton_amplitude = {}
+  structure_functions = {}
+  direct_structure_functions = {}
+  structure_functions_subtracted = {}
+  for job in jobs:
+    beta, kappas, dim, hadron, q, op = [ job[s] for s in [ 'beta', 'kappas', 'dim', 'hadron', 'q', 'op' ] ]
+    id_lattice_block = GenerateLatticeBlock( beta, kappas[0], kappas[1], dim )
+    id_job_block     = GenerateSimulationBlock( q, op )
+    folder   = '/'.join( [ '..', id_lattice_block, id_job_block, 'fit' ] )
+    print 'Gathering Compton Amplitude in:', folder
+    q  = np.asarray( job['q'], dtype=np.float64 )
+    q2 = np.sum(q**2)
+    mom2_max = job.get('mom2_max',5)
+    if job.get('extended_range',False):
+      r = range(-4,5)
+      m = 6
+    else:
+      r = range(-2,3)
+      m = 4
+    if job.get('extended_momenta',False):
+      syncs = [[0,0,0],[0,0,1],[0,0,2]] + [ [i,j,k] for i in r for j in r for k in range(-1,2) if i*q[0]+j*q[1]+k*q[2] > 0 and abs(i)+abs(j)+abs(k)<m and i**2 + j**2 + k**2 <= mom2_max ]
+      #syncs = filter( lambda (a,b,c): not ( a==0 and b==0 and c<0 ), syncs )
+    else:
+      syncs = [[0,0,0]] + [ [i,j,0] for i in r for j in r                      if i*q[0]+j*q[1]        > 0 and abs(i)+abs(j)       <m and i**2 + j**2        <= mom2_max ]
+    #split_syncs = syncs + map(lambda xs: map(Neg,xs),syncs[1:])
+    syncs = [ '{:+}{:+}{:+}'.format(*s) for s in syncs ]
+    #print syncs
+    mass_fit  = LoadJSONFile( folder+'/'+fmt[hadron].format('+0+0+0') )
+    mass_boot = np.asarray( mass_fit['eff']['boot'] )[:,-1]
+    lattice_mom_to_discrete_mom = lambda momenta, nx: np.sum( (np.asarray(momenta)*(2*np.pi/nx))**2, 1 )
+    dispersion_relation = lambda momenta, nx: np.sqrt( (mass_boot**2)[None,:] + lattice_mom_to_discrete_mom(momenta,nx)[:,None] )
+    nx = dim[0]
+    for type in job['types']:
+      #print type
+      for lam in job['lambdas']:
+        #print lam
+        extra = ''
+        point_fmt = threept_fmt( hadron, op, job['q'] )
+        candidate_rat_files  = [ folder+'/'+point_fmt.format(type,pp,lam,extra) for pp in syncs ]
+        rat_files, not_found_rat_files  = SplitFilter( os.path.isfile, candidate_rat_files )
+        for nfrf in not_found_rat_files:
+          print 'nf', nfrf
+        if len(not_found_rat_files):
+          exit(1)
+        cor_fits = map( LoadJSONFile, rat_files  )
+        momenta = map( Get('momentum'), cor_fits )
+        effs    = map( Get('eff')     , cor_fits )
+        d2E_boots  = np.asarray(map( Get('boot'), effs ))[:,:,0]
+        d2E_means  = np.asarray(map( Get('mean'), effs ))[:,0]
+        d2E_stds   = np.asarray(map( Get('std'), effs ))[:,0]
+        #print d2E_means
+        #print d2E_stds
+        omegas    = 2 * np.tensordot( q, momenta, axes=(0,1) ) / q2
+        E0_boots  = dispersion_relation(momenta,nx)
+        T_boots   = renorms[beta][op]**2 * 2 * E0_boots * d2E_boots * job.get('factor',1.0) /  2.0 #THE DIVIDE BY 2.0 COMES FROM THE FACT THAT WE HAVE -Q AS WELL IN OUR RELATION TO THE TENSOR, THERE SHOULD BE A MINUS SIGN FOR EUCLIDAN VS MINKOWSKI?
+        used_omegas = list(set( omegas.tolist() + used_omegas ))
+        #for r, m, m2, ev in zip( ErrVal2( *mean_var( 2.0 * d2E_boots * E0_boots ) ),  ErrVal2( d2E_means, d2E_stds ), ErrVal2( *mean_var(E0_boots) ), momenta ):
+        #  if ev in [ [0,0,0], [0,1,0], [1,0,0] ]:
+        #    print r, '->', m2, m, ev
+        for mom, omega, T_boot in zip(momenta,omegas.tolist(),T_boots.tolist()):
+          lattice_momenta = np.asarray(mom)
+          E0_mean, E0_var = mean_var( mass_boot, 0 )
+          #if type == 'quark2':
+          #  print mom
+          #  print ErrVal2( *mean_var( np.asarray(T_boot), 0 ) )
+          #  exit(1)
+          if omega:
+            nu = omega * q2 / 2
+            #coefs = (1.0,mom[-1]**2/nu)
+            coefs = (1.0,float(mom[-1]**2))
+          else:
+            coefs = (1.0,float(mom[-1]**2))
+          result_tuple = key_tuple( dim, beta, kappas, hadron, type + job.get('type_ext',''), op, omega, coefs, q2, tuple(mom), lam )
+          #print result_tuple
+          if result_tuple in compton_amplitude_raw:
+            print 'eronous tuple already there'
+            print result_tuple
+            exit(1)
+          compton_amplitude_raw[result_tuple] = T_boot
+  
+  ##-- AVERAGE OVER THE SAME LAMBDA --##
+  def _lambda_averaging( (k,v) ):
+    new_tuple = tuple(list(v[0])[:-1])
+    Tboot = GetTs( compton_amplitude_raw, v )
+    Tmean, Tstd = mean_var( Tboot )
+    Tboot_lambda_avg = np.sum( Tboot / Tstd[:,None], 0 ) / np.sum( 1.0 / Tstd )
+    compton_amplitude_lambda_averaged[new_tuple] = Tboot_lambda_avg
+  groups_differing_by_lambda_only = Collect( compton_amplitude_raw.keys(), [lambda_index] )
+  progmap( 'Lambda Averaging', _lambda_averaging, groups_differing_by_lambda_only )
+  
+  ##-- AVERAGE OVER SAME OMEGA DIFFERING ONLY BY MOMENTA --##
+  def _omega_average( (k,v) ):
+    new_tuple = tuple(list(v[0])[:-1])
+    Ts = GetTs( compton_amplitude_lambda_averaged, v )
+    Ts_mean, Ts_std = mean_var( Ts )
+    T_fit = np.sum( Ts / Ts_std[:,None], 0 ) / np.sum( 1.0 / Ts_std )
+    compton_amplitude[new_tuple] = T_fit
+    #if v[0][q2_index] == 1.0 and v[0][omega_index] == 0.0:
+    #  print 'found'
+    #  for a in v:
+    #    print a
+    #  print ErrVal2(*mean_var(Ts))
+    #if len(v) > 3:
+    #  print k
+    #  for a in v:
+    #    print a
+    #  #exit(1)
+  groups_of_same_omega = Collect( compton_amplitude_lambda_averaged.keys(), [momenta_index] )
+  progmap( 'Momenta Averaging (Same Omega)', _omega_average, groups_of_same_omega )
+  
+  ##-- DECOMPOSE THE STRUCTURE FUNCTIONS --##
+  def _decompose_structure_functions( (k,v) ):
+    coefs = map(Get(coef_index),v)
+    if len(list(set(coefs))) > 1:
+      #print coefs
+  
+      ###-- TEMPORARY direct for all calculation --##
+      #v_single = filter( lambda xs: xs[coef_index] == (1.0,0.0), v )
+      #T1dboot = GetTs( compton_amplitude, v_single )[0,:]
+      #decomposed_tuple1 = changed_tuple( v_single[0], (coef_index,'T1') )
+      #structure_functions[decomposed_tuple1] = T1dboot
+      #direct_structure_functions[decomposed_tuple1] = T1dboot
+  
+      #-- TEMPORARILY REMOVED T2 DECOMPOSITION FOR SPEED REASONS --##
+      Tboot = GetTs( compton_amplitude, v )
+      res = BootDecomposeLinearSystem( coefs, Tboot )
+      T1boot = res[:,0]
+      T2boot = res[:,1]
+      decomposed_tuple1 = changed_tuple( v[0], (coef_index,'T1') )
+      structure_functions[decomposed_tuple1] = T1boot
+      decomposed_tuple2 = changed_tuple( v[0], (coef_index,'T2') )
+      structure_functions[decomposed_tuple2] = T2boot
+      ##print 'ignoring T2' #all code below
+      v_single = filter( lambda xs: xs[coef_index] == (1.0,0.0), v )
+      T1dboot = GetTs( compton_amplitude, v_single )[0,:]
+      decomposed_tuple1 = changed_tuple( v_single[0], (coef_index,'T1') )
+      direct_structure_functions[decomposed_tuple1] = T1dboot
+      direct_structure_functions[decomposed_tuple1] = T1dboot
+      decomposeT1_mean, decomposeT1_std = mean_var(T1boot ,0)
+      directT1_mean   , directT1_std    = mean_var(T1dboot,0)
+      if not np.isclose( decomposeT1_mean, directT1_mean, rtol=1e-1 ):
+      #if v[0][q2_index] == 1.0 and v[0][omega_index] == 0.0:
+        print 'found'
+        print ErrVal2(*mean_var(T1boot ,0))
+        print ErrVal2(*mean_var(T1dboot,0))
+        print ErrVal2(*mean_var(Tboot))
+        print coefs
+        #exit(1)
+  
+      structure_functions[decomposed_tuple1] = T1dboot
+    else:
+      for i,(c,va) in enumerate(zip(coefs,v),1):
+        ids = np.nonzero(c)[0].tolist()
+        if len(ids) == 1:
+          id = ids[0]
+          Tboot = GetTs( compton_amplitude, [va] )[0,:]
+          Tboot = Tboot / c[id]
+          decomposed_tuple = changed_tuple( v[0], (coef_index,'T{}'.format(i)) )
+          structure_functions[decomposed_tuple] = Tboot
+  groups_differing_by_structure_function_composition = Collect( compton_amplitude.keys(), [coef_index] )
+  progmap( 'Decomposing Structure Functions', _decompose_structure_functions, groups_differing_by_structure_function_composition )
+  
+  ##-- FLAVOUR DECOMPOSITION AND SYNTHETICS --##
+  def _flavour_decomposition( (k,v) ):
+    Tuu     = GetTs( structure_functions, filter( lambda xs: xs[flavour_index] == 'quark1'             , v ) )[0,:]
+    Tdd     = GetTs( structure_functions, filter( lambda xs: xs[flavour_index] == 'quark2'             , v ) )[0,:]
+    Tupdupd = GetTs( structure_functions, filter( lambda xs: xs[flavour_index] == 'quark1_plus_quark2' , v ) )[0,:]
+    Tumdumd = GetTs( structure_functions, filter( lambda xs: xs[flavour_index] == 'quark1_minus_quark2', v ) )[0,:]
+    coefs = np.asarray( [[1.0,0.0,0.0], [0.0,1.0,0.0], [1.0,1.0,1.0], [1.0,1.0,-1.0]] )
+    B     = np.asarray([ Tuu, Tdd, Tupdupd, Tumdumd ])
+    res = BootDecomposeLinearSystem( coefs, B )
+    res_Tuu = res[:,0]
+    res_Tdd = res[:,1]
+    res_Tud = res[:,2]
+    res_Tuumdd = res_Tuu - res_Tdd
+    res_Tproton_connected  = 4.0/9.0 * res_Tuu + 1.0/9.0 * res_Tdd - 2.0/9.0 * res_Tud
+    res_Tneutron_connected = 1.0/9.0 * res_Tuu + 4.0/9.0 * res_Tdd - 2.0/9.0 * res_Tud
+    Tuu_tuple      = changed_tuple( v[0], (flavour_index,'uu')    )
+    Tdd_tuple      = changed_tuple( v[0], (flavour_index,'dd')    )
+    Tud_tuple      = changed_tuple( v[0], (flavour_index,'ud')    )
+    Tuumdd_tuple   = changed_tuple( v[0], (flavour_index,'uu-dd') )
+    Tproton_tuple  = changed_tuple( v[0], (flavour_index,'proton_connected' ) )
+    Tneutron_tuple = changed_tuple( v[0], (flavour_index,'neutron_connected' ) )
+    structure_functions[Tuu_tuple]      = res_Tuu    
+    structure_functions[Tdd_tuple]      = res_Tdd    
+    structure_functions[Tud_tuple]      = res_Tud    
+    structure_functions[Tuumdd_tuple]   = res_Tuumdd 
+    structure_functions[Tproton_tuple]  = res_Tproton_connected 
+    structure_functions[Tneutron_tuple] = res_Tneutron_connected 
+  groups_flavour_differing = Collect( structure_functions.keys(), [flavour_index] )
+  progmap( 'Decomposing Flavour', _flavour_decomposition, groups_flavour_differing )
+  
+  
+  ##-- DIAGNOSTICS PLOTS FOR LAMBDA SPREAD --##
+  def _lambda_diagnostics( (k,v) ):
+    hadron, flavour, op, q2 = [ v[0][k] for k in [ hadron_index, flavour_index, op_index, q2_index ] ]
+    id_lattice_block = GenerateNameBlock( v[0] )
+    lambda_groups = Collect( v, range(len(v[0])-1) )
+    plot_packets = []
+    for lam,v2 in lambda_groups:
+      ws = GetVar( omega_index, v2 )
+      Tboot = GetTs( compton_amplitude_raw, v2 )
+      Tmean, Tstd = mean_var( Tboot )
+      plot_packet = { 'x':ws, 'y':Tmean, 's':Tstd, 'l':str(lam) }
+      plot_packets.append( plot_packet )
+    params = { 'includezero':True, 'displace':0.12, 'xlabel':'$w$', 'title':'{} {}'.format(id_lattice_block,flavour) } 
+    _ChromaPlot( plot_packets, save='plots/{}_{}_diagnostics_lambda_{}_{}_{}.eps'.format(id_lattice_block,hadron,q2,op,flavour), **params )
+  lambda_average_diag_groups = Collect( compton_amplitude_raw.keys(), [lambda_index,coef_index,omega_index,momenta_index] )
+  progmap( 'Performing Lambda Diagnostics Plots', _lambda_diagnostics, lambda_average_diag_groups )
+  
+  file_decomposed        = open( 'data/flavour_decomposed_sutructure_functions.pickle'       , 'wb' )
+  file_decomposed_direct = open( 'data/flavour_decomposed_sutructure_functions_direct.pickle', 'wb' )
+  pickle.dump( structure_functions       , file_decomposed       , pickle.HIGHEST_PROTOCOL ) 
+  pickle.dump( direct_structure_functions, file_decomposed_direct, pickle.HIGHEST_PROTOCOL ) 
+else:
+  assert(len(pickle_files)==2)
+  direct_sf_filename, sf_filename = map( Fst, SplitFilter( lambda xs: 'direct' in xs, pickle_files ) )
+  sf_pickle        = open( sf_filename       , 'rb' )
+  direct_sf_pickle = open( direct_sf_filename, 'rb' )
+  structure_functions        = pickle.load(        sf_pickle )
+  direct_structure_functions = pickle.load( direct_sf_pickle )
+  structure_functions_subtracted = {}
+
+##-- PERFORM SUBTRACTION ON T1 --##
+def _subtract_t0( k ):
+  zero_tuple = changed_tuple( k, (omega_index,0.0) )
+  Tboot_w = structure_functions[k         ]
+  Tboot_0 = structure_functions[zero_tuple]
+  Tboot = Tboot_w - Tboot_0
+  structure_functions_subtracted[k] = Tboot
+unsubtracted_quantities = filter( lambda ks: ks[omega_index] != 0.0 and  ks[coef_index] == 'T1', structure_functions.keys() )
+progmap( 'Performing subtraction', _subtract_t0, unsubtracted_quantities )
+  
+##-- T0 PLOTS --##
+def _T0_plots( (k,v), extra='' ):
+  hadron, flavour, op, coef = [ v[0][k] for k in [ hadron_index, flavour_index, op_index, coef_index ] ]
+  lattice_groups = Collect( v, [q2_index] )
+  plot_packets = []
+  for _, v2 in lattice_groups:
+    id_lattice_block = GenerateNameBlock( v2[0] )
+    momenta_factor = get_momenta_factor( v2[0] )
+    q2s = momenta_factor**2 * GetVar( q2_index, v2 )
+    Tboot = GetTs( structure_functions, v2 )
+    Tmean, Tstd = mean_var( Tboot )
+    plot_packet = { 'x':q2s, 'y':Tmean, 's':Tstd, 'l':id_lattice_block }
+    plot_packets.append( plot_packet )
+  params = { 'includezero':True, 'displace':0.12, 'xlabel':'$Q^2 (GeV^2)$', 'title':'$T_i(0,Q^2)$ {}'.format(flavour) } 
+  _ChromaPlot( plot_packets, save='plots/T0{}_{}_{}_{}_{}.eps'.format(extra,hadron,op,coef,flavour), **params )
+t0_groups        = Collect( filter( lambda xs: xs[omega_index] == 0.0, structure_functions       .keys() ), [dim_index,beta_index,kappa_index,q2_index] )
+t0_groups_direct = Collect( filter( lambda xs: xs[omega_index] == 0.0, direct_structure_functions.keys() ), [dim_index,beta_index,kappa_index,q2_index] )
+progmap( 'Performing T0 plots', _T0_plots, t0_groups                  )
+progmap( 'Performing T0 plots', _T0_plots, t0_groups_direct, 'direct' )
+
+##-- T0 OP COMPARISON PLOTS --##
+def _T0_op_comparison_plots( (k,v), extra='' ):
+  hadron, flavour, coef = [ v[0][k] for k in [ hadron_index, flavour_index, coef_index ] ]
+  lattice_groups = Collect( v, [dim_index,beta_index,kappa_index,q2_index] )
+  plot_packets = []
+  for _, v2 in lattice_groups:
+    q2s = []
+    for a in v2:
+      id_lattice_block = GenerateNameBlock( a )
+      momenta_factor = get_momenta_factor( a )
+      q2 = momenta_factor**2 * a[q2_index]
+      q2s.append(q2)
+    Tboot = GetTs( structure_functions, v2 )
+    Tmean, Tstd = mean_var( Tboot )
+    plot_packet = { 'x':q2s, 'y':Tmean, 's':Tstd, 'l':v2[0][op_index] }
+    plot_packets.append( plot_packet )
+  params = { 'includezero':True, 'dispalce':True, 'xlabel':'$Q^2 (GeV^2)$', 'title':'$T_i(0,Q^2)$ {}'.format(flavour) } 
+  _ChromaPlot( plot_packets, save='plots/T0{}_op_comparison_{}_{}_{}.eps'.format(extra,hadron,coef,flavour), **params )
+t0_op_groups        = Collect( filter( lambda xs: xs[omega_index] == 0.0, structure_functions       .keys() ), [op_index,dim_index,beta_index,kappa_index,q2_index] )
+t0_op_groups_direct = Collect( filter( lambda xs: xs[omega_index] == 0.0, direct_structure_functions.keys() ), [op_index,dim_index,beta_index,kappa_index,q2_index] )
+progmap( 'Performing        T0 op comparison plots', _T0_op_comparison_plots, t0_op_groups                  )
+progmap( 'Performing direct T0 op comparison plots', _T0_op_comparison_plots, t0_op_groups_direct, 'direct' )
+
+##-- CONSTANT Q vs w PLOTS --##
+def _constantQ_plots( (k,v), d, type ):
+  hadron, flavour, op, q2, coef = [ v[0][k] for k in [ hadron_index, flavour_index, op_index, q2_index, coef_index ] ]
+  id_lattice_block = GenerateNameBlock( v[0] )
+  ws = GetVar( omega_index, v )
+  Tboot = GetTs( d, v )
+  Tmean, Tstd = mean_var( Tboot )
+  plot_packet = { 'x':ws, 'y':Tmean, 's':Tstd }
+  params = { 'includezero':True, 'xlabel':'w' }
+  _ChromaPlot( [plot_packet], save='plots/{}_{}_w_seperate_{}_{}_{}{}_{}.eps'.format(id_lattice_block,hadron,q2,op,coef,type,flavour), **params )
+t0_groups = Collect( filter( lambda xs: xs[omega_index] == 0.0, structure_functions.keys() ), [dim_index,beta_index,kappa_index,q2_index] )
+constantQ_groups_subtracted  = Collect( structure_functions_subtracted.keys(), [omega_index] )
+constantQ_groups             = Collect( structure_functions           .keys(), [omega_index] )
+progmap( 'Performing   subtracted constant Q plots', _constantQ_plots, constantQ_groups_subtracted, structure_functions_subtracted, 'subtracted'   )
+progmap( 'Performing unsubtracted constant Q plots', _constantQ_plots, constantQ_groups           , structure_functions           , 'unsubtracted' )
+
+##-- CONSTANT Q vs w PLOTS side by side --##
+def _constantQop_plots( (k,v), d, type ):
+  hadron, flavour, q2, coef = [ v[0][k] for k in [ hadron_index, flavour_index, q2_index, coef_index ] ]
+  id_lattice_block = GenerateNameBlock( v[0] )
+  operator_groups = Collect( v, [omega_index] )
+  plot_packets = []
+  for i, (_, v2) in enumerate(operator_groups):
+    ws = GetVar( omega_index, v2 )
+    Tboot = GetTs( d, v2 )
+    Tmean, Tstd = mean_var( Tboot )
+    plot_packet = { 'x':ws, 'y':Tmean, 's':Tstd, 'l':v2[0][op_index] }
+    plot_packets.append(plot_packet)
+  if len(plot_packets) > 1:
+    params = { 'includezero':True, 'xlabel':'w', 'displace':0.1 }
+    _ChromaPlot( plot_packets, save='plots/{}_{}_w_op_comparison_{}_{}{}_{}.eps'.format(id_lattice_block,hadron,q2,coef,type,flavour), **params )
+constantQop_groups_subtracted  = Collect( structure_functions_subtracted.keys(), [omega_index,op_index] )
+constantQop_groups             = Collect( structure_functions           .keys(), [omega_index,op_index] )
+progmap( 'Performing   subtracted constant (Q,op) plots', _constantQop_plots, constantQop_groups_subtracted, structure_functions_subtracted, 'subtracted'   )
+progmap( 'Performing unsubtracted constant (Q,op) plots', _constantQop_plots, constantQop_groups           , structure_functions           , 'unsubtracted' )
+
+##-- COMBINED Q vs w PLOTS --##
+def _combined_constantQ_plots( (k,v), d, type ):
+  hadron, flavour, op, q2, coef = [ v[0][k] for k in [ hadron_index, flavour_index, op_index, q2_index, coef_index ] ]
+  id_lattice_block = GenerateNameBlock( v[0] )
+  constant_q_groups = Collect( v, [omega_index] )
+  plot_packets = []
+  for _, v2 in constant_q_groups:
+    momenta_factor = get_momenta_factor( v2[0] )
+    q2 = momenta_factor**2 * v2[0][q2_index]
+    ws = GetVar( omega_index, v2 )
+    Tboot = GetTs( d, v2 )
+    Tmean, Tstd = mean_var( Tboot )
+    #print q2
+    #print np.round(q2,1)
+    plot_packet = {'x':ws, 'y':Tmean, 's':Tstd, 'l':'${} GeV^2$'.format(np.round(q2,1))}
+    plot_packets.append( plot_packet )
+  params = { 'includezero':True, 'xlabel':'w', 'xlims':[0.0,1.5] }
+  _ChromaPlot( plot_packets, save='plots/{}_{}_w_combined_{}_{}{}_{}.eps'.format(id_lattice_block,hadron,op,coef,type,flavour), **params )
+t0_groups = Collect( filter( lambda xs: xs[omega_index] == 0.0, structure_functions.keys() ), [dim_index,beta_index,kappa_index,q2_index] )
+combined_constantQ_groups_subtracted  = Collect( structure_functions_subtracted.keys(), [q2_index,omega_index] )
+combined_constantQ_groups             = Collect( structure_functions           .keys(), [q2_index,omega_index] )
+progmap( 'Performing   subtracted constant Q plots', _combined_constantQ_plots, combined_constantQ_groups_subtracted, structure_functions_subtracted, 'subtracted'   )
+progmap( 'Performing unsubtracted constant Q plots', _combined_constantQ_plots, combined_constantQ_groups           , structure_functions           , 'unsubtracted' )
+
+
+##-- SCALING PLOTS --##
+def _roundedw_dictionary( d, decimals ):
+  res = {}
+  for k in d:
+    res[ changed_tuple( k, (omega_index,np.round(k[omega_index],decimals)) ) ] = d[k]
+  return res
+def _scaling_plots( (k,v), d, type ): 
+  hadron, flavour, op, coef = [ v[0][k] for k in [ hadron_index, flavour_index, op_index, coef_index ] ]
+  grouped_by_omega = Collect( v, [dim_index,beta_index,kappa_index,q2_index] )
+  plot_packets = []
+  for _, v2 in grouped_by_omega:
+    if len(v2) > 3:
+      momentum_factor = get_momenta_factor( v2[0] )
+      q2s = momentum_factor**2 * GetVar( q2_index, v2 )
+      Tboot = GetTs( d, v2 )
+      Tmean, Tstd = mean_var( Tboot )
+      plot_packet = { 'x':q2s, 'y':Tmean, 's':Tstd }
+      plot_packets.append(plot_packet)
+  params = { 'includezero':True, 'xlabel':'Q' }
+  if len(plot_packets):
+    _ChromaPlot( plot_packets, save='plots/scaling_{}_{}_{}_{}_{}.eps'.format(hadron,op,coef,type,flavour), **params )
+rounded_structure_functions_subtracted = _roundedw_dictionary( structure_functions_subtracted, 2 )
+rounded_structure_functions            = _roundedw_dictionary( structure_functions           , 2 )
+groups_scale_plots_subtracted = Collect( rounded_structure_functions_subtracted.keys(), [dim_index,beta_index,kappa_index,q2_index,omega_index] )
+groups_scale_plots            = Collect( rounded_structure_functions           .keys(), [dim_index,beta_index,kappa_index,q2_index,omega_index] )
+progmap( 'Creating   subtracted Scaling Plots', _scaling_plots, groups_scale_plots_subtracted, rounded_structure_functions_subtracted,   'subtracted' )
+progmap( 'Creating unsubtracted Scaling Plots', _scaling_plots, groups_scale_plots_subtracted, rounded_structure_functions           , 'unsubtracted' )
+
+##-- STORING GERRIT FRIENDLY DATA --##
+def _store_data( (k,v), d, type ):
+  hadron, flavour, op, coef = [ v[0][ka] for ka in [ hadron_index, flavour_index, op_index, coef_index ] ]
+  id_lattice_block = GenerateNameBlock( v[0] )
+  momentum_factor = get_momenta_factor( v[0] )
+  ws  = (                      GetVar( omega_index, v ) ).tolist()
+  q2s = ( momentum_factor**2 * GetVar( q2_index   , v ) ).tolist()
+  Tboot = GetTs( d, v )
+  Tmean, Tstd = mean_var( Tboot )
+  Tmean, Tstd = Tmean.tolist(), Tstd.tolist()
+  cormat =  np.corrcoef( Tboot )
+  f = open( 'data/{}_data_and_correlation_matrix_{}_{}_{}_{}{}.txt'.format(id_lattice_block,hadron,flavour,op,coef,type), 'w+' )
+  f.write( 'Lines are omegas, q2s (GeV^2), structure function mean, structure function std, rest correlation matrix\n' )
+  def _print_line( a ):
+    f.write( ('{} '*len(a)).format( *a ) )
+    f.write( '\n' )
+  _print_line( ws    )
+  _print_line( q2s   )
+  _print_line( Tmean )
+  _print_line( Tstd  )
+  for row in cormat:
+    _print_line(row)
+  f.close()
+file_subtracted   = open( 'data/subtracted_compton_amplitude.pickle', 'wb' )
+file_unsubtracted = open( 'data/unsubtracted_compton_amplitude.pickle', 'wb' )
+pickle.dump( structure_functions_subtracted, file_subtracted  , pickle.HIGHEST_PROTOCOL ) 
+pickle.dump( structure_functions           , file_unsubtracted, pickle.HIGHEST_PROTOCOL ) 
+#WriteJSONFile( 'data/subtracted_compton_amplitude.json'  , structure_functions_subtracted )
+#WriteJSONFile( 'data/unsubtracted_compton_amplitude.json', structure_functions            )
+groups_latticeblocks_subtracted = Collect( structure_functions_subtracted.keys(), [q2_index,omega_index] )
+groups_latticeblocks            = Collect( structure_functions           .keys(), [q2_index,omega_index] )
+progmap( 'Creating   subtracted correlation and data', _store_data, groups_latticeblocks_subtracted, structure_functions_subtracted,   'subtracted' ) 
+progmap( 'Creating unsubtracted correlation and data', _store_data, groups_latticeblocks           , structure_functions           , 'unsubtracted' ) 
+def _store_T0_data( (k,v), d ):
+  hadron, flavour, op, coef = [ v[0][ka] for ka in [ hadron_index, flavour_index, op_index, coef_index ] ]
+  momentum_factor = get_momenta_factor( v[0] )
+  q2s = [ get_momenta_factor( a )**2 * a[q2_index] for a in v ]
+  kappas = GetVar( kappa_index, v ).tolist()
+  dims   = GetVar( dim_index, v ).tolist()
+  Tboot = GetTs( d, v )
+  Tmean, Tstd = mean_var( Tboot )
+  Tmean, Tstd = Tmean.tolist(), Tstd.tolist()
+  cormat =  np.corrcoef( Tboot )
+  f = open( 'data/T0_data_and_correlation_matrix_{}_{}_{}_{}.txt'.format(hadron,flavour,op,coef), 'w+' )
+  f.write( 'Lines are kappas, dims, q2s (GeV^2), structure function mean, structure function std, rest correlation matrix\n' )
+  def _print_line( a ):
+    f.write( ('{} '*len(a)).format( *a ) )
+    f.write( '\n' )
+  _print_line( kappas )
+  _print_line( dims )
+  _print_line( q2s   )
+  _print_line( Tmean )
+  _print_line( Tstd  )
+  for row in cormat:
+    _print_line(row)
+  f.close()
+progmap( 'Creating T0 correlation and data', _store_T0_data, t0_groups, structure_functions ) 
+
+RunChromaPlots()

@@ -1,0 +1,92 @@
+#!/bin/env python
+
+from hl import *
+from hl_plot import *
+from hl_load_json import *
+from hl_ratios import *
+
+f_mass = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_propshsh/nucleon_unpol_psync+0+0+0.json' 
+f_l1_m = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_g3_-0.025000_q+4+1+0_g3_-0.025000_q-4-1+0_propshsh/nucleon_unpol_psync+0+0+0.json'
+f_l2_m = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_g3_-0.050000_q+4+1+0_g3_-0.050000_q-4-1+0_propshsh/nucleon_unpol_psync+0+0+0.json'
+f_l3_m = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_g3_-0.075000_q+4+1+0_g3_-0.075000_q-4-1+0_propshsh/nucleon_unpol_psync+0+0+0.json'
+f_l1_p = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_g3_0.025000_q+4+1+0_g3_0.025000_q-4-1+0_propshsh/nucleon_unpol_psync+0+0+0.json'
+f_l2_p = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_g3_0.050000_q+4+1+0_g3_0.050000_q-4-1+0_propshsh/nucleon_unpol_psync+0+0+0.json'
+f_l3_p = '$WORK/twopt_b5p50kp120900kp120900c2p6500_32x64_cos/q410_v3/32_32_32_64_0.120900_0.120900/_propshsh_g3_0.075000_q+4+1+0_g3_0.075000_q-4-1+0_propshsh/nucleon_unpol_psync+0+0+0.json'
+
+j_mass = load_correlator( f_mass )
+j_l1_m = load_correlator( f_l1_m )
+j_l2_m = load_correlator( f_l2_m )
+j_l3_m = load_correlator( f_l3_m )
+j_l1_p = load_correlator( f_l1_p )
+j_l2_p = load_correlator( f_l2_p )
+j_l3_p = load_correlator( f_l3_p )
+
+LoadCorrelatorBootstraps( j_mass )
+LoadCorrelatorBootstraps( j_l1_m )
+LoadCorrelatorBootstraps( j_l2_m )
+LoadCorrelatorBootstraps( j_l3_m )
+LoadCorrelatorBootstraps( j_l1_p )
+LoadCorrelatorBootstraps( j_l2_p )
+LoadCorrelatorBootstraps( j_l3_p )
+
+c_mass  = hlRatioCombiner( [j_mass] )
+c_l1_m  = hlRatioCombiner( [j_l1_m] )
+c_l2_m  = hlRatioCombiner( [j_l2_m] )
+c_l3_m  = hlRatioCombiner( [j_l3_m] )
+c_l1_p  = hlRatioCombiner( [j_l1_p] )
+c_l2_p  = hlRatioCombiner( [j_l2_p] )
+c_l3_p  = hlRatioCombiner( [j_l3_p] )
+
+e_mass  = get_effmass( c_mass, c=0, l='$\\lambda=0$' )
+e_l1_m  = get_effmass( c_l1_m, c=1, absshift=-0.1 )
+e_l2_m  = get_effmass( c_l2_m, c=2, absshift=-0.2 )
+e_l3_m  = get_effmass( c_l3_m, c=3, absshift=-0.3 )
+e_l1_p  = get_effmass( c_l1_p, c=1, l='$\\lambda=\\pm0.025$', absshift=0.1 )
+e_l2_p  = get_effmass( c_l2_p, c=2, l='$\\lambda=\\pm0.050$', absshift=0.2 )
+e_l3_p  = get_effmass( c_l3_p, c=3, l='$\\lambda=\\pm0.075$', absshift=0.3 )
+e_l1    = get_effmass( c_l1_p * c_l1_m, c=1, factor=2, l='$\\lambda=\\pm0.025$' )
+e_l2    = get_effmass( c_l2_p * c_l2_m, c=2, factor=2, l='$\\lambda=\\pm0.050$' )
+e_l3    = get_effmass( c_l3_p * c_l3_m, c=3, factor=2, l='$\\lambda=\\pm0.075$' )
+
+c_l1 = boot_object( c_l1_m * c_l1_p / c_mass**2, time=range(64) )
+c_l2 = boot_object( c_l2_m * c_l2_p / c_mass**2, time=range(64) )
+c_l3 = boot_object( c_l3_m * c_l3_p / c_mass**2, time=range(64) )
+
+r_l1    = get_effmass( c_l1['boot'], c=1, factor=2, l='$\\lambda=0.025$' )
+r_l2    = get_effmass( c_l2['boot'], c=2, factor=2, l='$\\lambda=0.050$' )
+r_l3    = get_effmass( c_l3['boot'], c=3, factor=2, l='$\\lambda=0.075$' )
+
+cf_l1, rf_l1 = FitCorrelatorEffmass( {'hadron':'nucleon'}, c_l1, dict(r_l1), '', '[11,18]', factor=2, store=False )
+cf_l2, rf_l2 = FitCorrelatorEffmass( {'hadron':'nucleon'}, c_l2, dict(r_l2), '', '[11,18]', factor=2, store=False )
+cf_l3, rf_l3 = FitCorrelatorEffmass( {'hadron':'nucleon'}, c_l3, dict(r_l3), '', '[11,18]', factor=2, store=False )
+
+yss = np.asarray([ f['fit']['boot'][:,0] for f in [rf_l1, rf_l2, rf_l3 ] ])
+ys, ss = mean_var( yss )
+xs = [ 0.025, 0.050, 0.075 ]
+
+fit = BootFitPoly1D( xs, np.swapaxes(yss,0,1), ys, [2] )
+plot_packet1 = [{'x':[xs[i]], 'y':[ys[i]], 's':[ss[i]], 'c':i+1} for i in range(3)]
+print plot_packet1
+plot_packet2 = plot_packet1 + [{'f':fit,'c':0}]
+
+e_sets = [ e_mass, e_l1_p, e_l1_m, e_l2_p, e_l2_m, e_l3_p, e_l3_m ]
+
+xlims = [6,20]
+ylims = [-0.01,0.0]
+
+time_label = '$\\frac{t}{a}$'
+energy_label = '$aE$'
+params = { 'fs':20, 'xlims':[0,32], 'ylims':[0.4,1.0], 'xlabel':time_label, 'ylabel':energy_label, 'absdisplace':0.8, 'loc':'best', 'title':'Effective Mass' }
+ChromaPlot( e_sets[0:1], save='talks/eff0_wide.eps', **params )
+params = { 'fs':20, 'xlims':xlims, 'ylims':[0.4,0.6], 'xlabel':time_label, 'ylabel':energy_label,                    'loc':'best', 'title':'Effective Mass' }
+for i in range(len(e_sets)):
+  ChromaPlot( e_sets[0:i+1], save='talks/eff{}.eps'.format(i), **params )
+params = { 'fs':20, 'xlims':xlims, 'ylims':[0.4,0.6], 'xlabel':time_label, 'ylabel':energy_label, 'absdisplace':0.2, 'loc':'best', 'title':'Effective Mass' }
+ChromaPlot( [e_mass,e_l1,e_l2,e_l3], save='talks/effe.eps', **params )
+params = { 'fs':20, 'xlims':xlims, 'ylims':ylims, 'xlabel':time_label, 'ylabel':'$a\\Delta E_{even}$',                    'loc':'best', 'title':'Energy Shifts' }
+ChromaPlot( [r_l1,r_l2,r_l3], save='talks/effr.eps', **params )
+ChromaPlot( [rf_l1,rf_l2,rf_l3], save='talks/effrf.eps', **params )
+params = { 'fs':20, 'xlims':[0.0,.1], 'ylims':ylims, 'xlabel':'$\\lambda$',  'loc':'best', 'title':'$a\\Delta E_{even}(\\lambda) vs \\lambda$' }
+ChromaPlot( plot_packet1, save='talks/efffht.eps', **params )
+ChromaPlot( plot_packet2, save='talks/efffht2.eps', **params )
+

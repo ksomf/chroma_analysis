@@ -1,0 +1,104 @@
+#!/bin/env python
+
+from sympy import *
+
+#euclidean space gammas
+Id = Matrix([[ 1  , 0  ,  0 ,  0  ]
+            ,[ 0  , 1  ,  0 ,  0  ]
+            ,[ 0  , 0  ,  1 ,  0  ]
+            ,[ 0  , 0  ,  0 ,  1  ]])
+g1 = Matrix([[ 0  , 0  ,  0 ,  I  ]
+            ,[ 0  , 0  ,  I ,  0  ]
+            ,[ 0  , -I ,  0 ,  0  ]
+            ,[ -I , 0  ,  0 ,  0  ]])
+g2 = Matrix([[ 0  , 0  ,  0 ,  1  ]
+            ,[ 0  , 0  , -1 ,  0  ]
+            ,[ 0  , -1 ,  0 ,  0  ]
+            ,[  1 , 0  ,  0 ,  0  ]])
+g3 = Matrix([[ 0  , 0  ,  I ,  0  ]
+            ,[ 0  , 0  ,  0 , -I  ]
+            ,[ -I , 0  ,  0 ,  0  ]
+            ,[ 0  , I  ,  0 ,  0  ]])
+g4 = Matrix([[ 1  , 0  ,  0 ,  0  ]
+            ,[ 0  , 1  ,  0 ,  0  ]
+            ,[ 0  , 0  , -1 ,  0  ]
+            ,[ 0  , 0  ,  0 , -1  ]])
+g5 = g1*g2*g3*g4
+gammas = [ g4, g1, g2, g3, g4, g5 ]
+trace = lambda M: M[0,0] + M[1,1] + M[2,2] + M[3,3]
+slash = lambda vec: vec[0]*g4 + vec[1]*g1 + vec[2]*g2 + vec[3]*g3
+sigma = lambda a, b: I * ( gammas[a] * gammas[b] - gammas[b] * gammas[a] ) / 2
+
+Ep, E, pp1, p1, pp2, p2, pp3, p3, m, s1, s2, s3 = symbols('Ep E pp1, p1 pp2 p2 pp3 p3 m s1 s2 s3')
+unpol_projection = (Id+g4)/2
+pol_projection   = unpol_projection * I * slash([0,s1,s2,s3]) * g5
+
+dirac_space = [ 'Id'
+              , 'g1', 'g2', 'g3', 'g4'
+              , 'g5'
+              , 'g1*g5', 'g2*g5', 'g3*g5', 'g4*g5'
+              , 'sigma(4,1)', 'sigma(4,2)', 'sigma(4,3)'
+              , 'sigma(3,1)', 'sigma(3,2)', 'sigma(2,1)' ]
+
+
+sync_mom  = [ I*Ep, pp1, pp2, pp3 ]
+src_mom   = [ I*E , p1 , p2 , p3  ]
+sync_prop = (-I*slash(sync_mom) + m*Id)
+src_prop  = (-I*slash(src_mom)  + m*Id)
+def sigmaer( mu, nu ):
+  if mu == 0:
+    mu = 4
+  if nu == 0:
+    nu = 4
+  return 'sigma('+str(mu)+','+str(nu)+')'
+zero_elements = [ sigmaer(i,i) for i in range(4) ]
+pols   = { k:0 for k in zero_elements }
+unpols = { k:0 for k in zero_elements }
+for alg in dirac_space:
+   unpol = factor(simplify(trace( unpol_projection*sync_prop*eval(alg)*src_prop/2 )))
+   pol   = factor(simplify(trace(   pol_projection*sync_prop*eval(alg)*src_prop/2 )))
+   pols[alg] = pol
+   unpols[alg] = unpol
+   print 'unpol', alg, unpol
+   print 'pol',   alg, pol
+for nu in range(1,5):
+  for mu in range(nu+1,5):
+    pols[sigmaer(nu,mu)]   = -pols[sigmaer(mu,nu)]
+    unpols[sigmaer(nu,mu)] = -unpols[sigmaer(mu,nu)]
+
+def GluonDecomposition( mu, nu, P, q, poller ):
+  mu_str = str(mu)
+  nu_str = str(nu)
+  if mu == 0:
+    mu_str = '4'
+  if nu == 0:
+    nu_str = '4'
+  return map(simplify, [ -I*(poller['g'+mu_str]*P[nu] + poller['g'+nu_str]*P[mu])/2
+                       , -I*sum([ poller[sigmaer(mu,a)]*q[a]*P[nu] 
+                                + poller[sigmaer(nu,a)]*q[a]*P[mu] for a in range(4) ])/4/m
+                       , -q[mu]*q[nu]*poller['Id']/m ] )
+def Irrep1( P, q, poller ):
+  A4,B4,C4 = GluonDecomposition( 0, 0, P, q, poller )
+  A1,B1,C1 = GluonDecomposition( 1, 1, P, q, poller )
+  A2,B2,C2 = GluonDecomposition( 2, 2, P, q, poller )
+  A3,B3,C3 = GluonDecomposition( 3, 3, P, q, poller )
+  return A4-(A1+A2+A3)/3, B4-(B1+B2+B3)/3, C4-(C1+C2+C3)/3
+
+def Irrep2( P, q, poller ):
+  return GluonDecomposition( 0, 1, P, q, poller )
+
+P = map( lambda (a,b): (a+b)/2, zip(sync_mom,src_mom) )
+q = map( lambda (a,b): (a-b)  , zip(sync_mom,src_mom) )
+
+print 'unpoll irrep1'
+for form in Irrep1( P, q, unpols ):
+  print form
+print 'poll irrep1'
+for form in Irrep1( P, q, pols ):
+  print form
+print 'unpoll irrep2'
+for form in Irrep2( P, q, unpols ):
+  print form
+print 'poll irrep2'
+for form in Irrep2( P, q, pols ):
+  print form

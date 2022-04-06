@@ -1,0 +1,332 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl                    import *
+from hl_naming_conventions import parameter_map
+from hl_plot               import ChromaPlot
+from hl_ratios             import cor_id, cor_id_dict
+from hl_gamma              import *
+
+from ast       import literal_eval
+from functools import partial
+from itertools import groupby
+
+nb = 200
+Zq = GenVal( 1.06, 0.01, nb )
+Aqxs  = [ -0.486003033430, -0.374279604640, -0.316302529010, -0.256764180530, -0.195531194070, -0.132450061860, -0.067342598158, 0.0            ]
+Aqys  = [ 0.230521943850 , 0.267063368980 , 0.296414486600 , 0.334898314870 , 0.368116582180 , 0.423663465030 , 0.496580347110 , 0.589747441690 ]
+Aqss  = [ 0.019389339505 , 0.008490797760 , 0.005879474851 , 0.004638631872 , 0.002640894745 , 0.001664142583 , 0.001225183987 , 0.001334713003 ]
+Cqxs  = [ -0.486003033430, -0.374279604640, -0.316302529010, -0.256764180530, -0.195531194070, -0.132450061860, -0.067342598158 ]
+Cqys  = [ -0.003615035792, -0.017626797813, -0.038426404135, -0.091384587498, -0.023755552494, -0.048304768992, -0.157633134990 ]
+Cqss  = [ 0.006650470180 , 0.004373439643 , 0.003927793345 , 0.005161485265 , 0.003780885710 , 0.003435151836 , 0.006310884605 ]
+Aqyss = np.asarray([ GenVal( m, s, nb ) for m,s in zip(Aqys,Aqss) ])
+Aqyss = Zq * Aqyss
+Aqys, Aqss = mean_var( Aqyss )
+Cqyss = np.asarray([ GenVal( m, s, nb ) for m,s in zip(Cqys,Cqss) ])
+Cqyss = Zq * Cqyss
+Cqys, Cqss = mean_var( Cqyss )
+
+def Collect( keys, differ_by_keys ): #Collect the keys that differe only in specified indicies, and then sorts by them
+  groupby_key = range(len(keys[0]))
+  for k in sorted(differ_by_keys)[::-1]:
+    groupby_key.pop(k)
+  group_key  = lambda xs: tuple([xs[i] for i in groupby_key])
+  sort_key = lambda xs: group_key(xs) + tuple([xs[i] for i in differ_by_keys])
+  #print groupby_key, group_key(keys[0]), keys[0]
+  sorted_keys = sorted(keys,key=sort_key)
+  res = groupby(sorted_keys,key=group_key)
+  res = [ (k,[a for a in v]) for k,v in res ]
+  #print map(Fst,res)
+  return res
+
+
+hbarc = .19732697 #GeV nm
+a_fm = 0.1 #fm
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+fits = map( LoadJSONFile, json_files )
+
+def _get_key_tuple(d):
+  ffs = d['ff']
+  split_index1 = ffs.index('_')
+  split_index2 = ffs.index('_',split_index1+1)
+
+  q_pp_p, type, id = ffs[ :split_index1 ], ffs[ split_index1+1:split_index2 ], ffs[ split_index2+1: ]
+  print q_pp_p, type, id
+  return( (q_pp_p, type, id) )
+
+kinematics_index = 0
+type_index = 1
+id_index = 2
+
+fits,mass = SplitFilter( lambda xs: 'ff' in xs, fits )
+mass_boot  = mass[0]['eff']['boot'][:,0]
+mass_mean  = mass[0]['eff']['mean'][0]
+datas = { _get_key_tuple(d):d for d in fits }
+
+
+def _get_kinematics( d ):
+  dim = d['dim']
+  q3, pp3, p3 = d['q'], d['pp'], d['p'] 
+  pp = ff_dispersion_relation( mass_mean, pp3, *dim[:-1] )
+  p  = ff_dispersion_relation( mass_mean, p3 , *dim[:-1] )
+  q = pp - p
+  op = d['op']
+  s  = d['s']
+  return q3, pp3, p3, pp, p, q, op, s
+def _get_ff_coefs( pp, p, s, op ):
+  GammaTwoPt   = euclidean_pos_parity_projector
+  GammaThreePt = np.tensordot( s, euclidean_pos_parity_pol_tuple, (0, 0) )
+  if 'ExB_x' in op:
+    combination, q2 = EuclideanGluonIrrep2( mass_mean, 1, pp, p, GammaTwoPt, GammaThreePt )
+  elif 'B2mE2' in op:
+    combination, q2 = EuclideanGluonIrrep1( mass_mean,    pp, p, GammaTwoPt, GammaThreePt )
+  else:
+    print 'Unknown op: ', op
+    exit(1)
+  return combination, q2
+
+##-- GET THE ZERO POINT --##
+zero_q_point = datas[filter( lambda xs: xs[type_index] == 'A', datas.keys() )[0]]
+q3, pp3, p3, pp, p, q, op, s = _get_kinematics( zero_q_point )
+Fz = -zero_q_point['eff']['boot'][:,0]
+combination, q2 = _get_ff_coefs( pp, p, [1,0,0,0], 'B2mE2' )
+print pp, p, s, op, combination
+assert( combination[-1] == 0, combination[-2] == 0 )
+Az = Fz / combination[0]
+Az = -Az.real
+Zg = (Aqyss[-1,:] - 1.0)/ -Az
+Az = Zg * Az
+Azm, Azs = mean_var( Az, 0 )
+
+group1 = Collect( filter( lambda xs: xs[type_index] == 'ABs', datas.keys() ), [kinematics_index,id_index] )
+def _basic_dipole_fit( (k,v) ):
+  dim = datas[v[0]]['dim']
+  xs = []
+  yss = []
+  for a in v:
+    q3, pp3, p3, pp, p, q, op, s = _get_kinematics( datas[a] )
+    F = Zg * -datas[a]['eff']['boot'][:,0]
+    combination, q2 = _get_ff_coefs( pp, p, s, op )
+
+    if not np.isclose( combination[0], combination[1] ):
+      print a
+      print combination
+      print q3, pp3, p3, s
+    else:
+      #assert( np.isclose( combination[0], combination[1] ) )
+      #print q2, q3, pp3, p3
+      print combination[0]
+      xs.append(q2.real * (hbarc/a_fm)**2)
+      yss.append(F / combination[0])
+  xs  = np.asarray(xs)
+  yss = np.asarray(yss).real
+  ys  = np.mean( yss, 1 )
+  ss  = np.std(  yss, 1, ddof=1 )
+  #fit = BootFitCurve1D( xs, np.swapaxes(yss,0,1), ss, dipole_func, jac=dipole_jac, boot_func=boot_object_errval_2 )
+  fit = BootFitCurve1D( xs, np.swapaxes(yss,0,1), ss, dipole_func,  boot_func=boot_object_errval_2 )
+  fm, fs = fit['mean'][0], fit['std'][0]
+  Jgm = fm / 2.0
+  Jgs = fs / 2.0
+  Jqm = Aqys[-1]/2.0
+  Jqs = Aqss[-1]/2.0
+  Jsum = ( fit['boot'][:,0] + Aqyss[-1,:] ) / 2.0
+  Jsumm, Jsums = mean_var( Jsum, 0 )
+  print 'A+B at 0', fit['val']
+  print 'half A+B at 0', ErrVal2( Jgm, Jgs )
+  print 'half xq', ErrVal2( Jqm, Jqs )
+  print 'sum', ErrVal2( Jsumm, Jsums )
+  print 'Zg', ErrVal2( *mean_var( Zg, 0 ) )
+
+  #print xs.shape
+  #print yss.shape
+  params = { 'fs':20, 'xlims':[-0.1,4.0], 'ylims':[-0.1,0.5], 'includezero':True, 'xlabel':'$Q^2$ $(GeV^2)$' }
+  plot_data = { 'x':xs, 'y':ys, 's':ss, 'f':fit , 'l':'$J(Q^2)$' }
+  plot_data2 = { 'x':[0.0], 'y':[Azm], 's':[Azs], 'l':'$M_2(0)$' }
+  ChromaPlot( [plot_data,plot_data2], save='png/AB.eps', **params )
+progmap( 'Generating basic dipoles', _basic_dipole_fit, group1 )
+group2 = Collect( filter( lambda xs: xs[type_index] in ['ABs','ABd'], datas.keys() ), [type_index,id_index] )
+group3 = Collect( datas.keys(), [type_index,id_index] )
+resAB  = {}
+resABC = {}
+def _decompose( (k,v) ):
+  if len(v) > 1 and len(list(set([ a[type_index] for a in v ]))):
+    print 'A'
+    ccs  = []
+    yss = []
+    for a in v:
+      q3, pp3, p3, pp, p, q, op, s = _get_kinematics( datas[a] )
+      print 'combination'
+      F = Zg*-datas[a]['eff']['boot'][:,0]
+      combination, q2 = _get_ff_coefs( pp, p, s, op )
+      if np.round(combination[0],6) != 0.0 and combination[-1] == 0:
+        Fm, Fv = mean_var( F, 0 )
+        if combination[0].real > combination[0].imag and Fm.imag > Fm.real:
+          print '================================='
+          print q3, pp3, p3
+        print a, op
+        print 'vals       ', np.round( mean_var( F                 , 0 ), 4 )
+        print 'vals       ', np.round( mean_var( F / combination[0], 0 ), 4 )
+        print 'combination', combination
+        F = F / combination[0]
+        combination = np.divide( combination[:2] , combination[0] ).tolist()
+        print k, q2, combination
+        ccs.append( combination )
+        yss.append( F )
+
+    ccs = np.asarray( ccs )
+    yss = np.asarray( yss )
+    ys  = np.mean( yss, 1 )
+    ss  = np.std(  yss, 1, ddof=1 )
+    _, _, rank, _ = la.lstsq( ccs, ys )
+    #print rank, k, rank == 2 and  k != (u'q04pp02p02',) and k != (u'q04pp03p03',)
+    if rank == 2 and not k == (u'q04pp02p02',):
+      #assert( not np.any( np.iscomplex( ccs ) ) )
+      #print mean_var( yss )
+      #assert( not np.any( np.iscomplex( yss ) ) )
+      ABb = BootDecomposeLinearSystem( ccs.real, yss )
+      AB = np.asarray(map( Fst, [ la.lstsq( ccs, yss[:,i] ) for i in range(yss.shape[-1]) ] )).real
+      ABm = np.mean( AB, 0 )
+      ABs = np.std ( AB, 0, ddof=1 )
+      resAB[k] = { 'q2':q2.real, 'B':{ 'boot':AB[:,0], 'mean':ABm[0], 'std':ABs[0] }, 'A':{ 'boot':AB[:,1], 'mean':ABm[1], 'std':ABs[1] } }
+progmap( 'Generating decomposed data', _decompose, group3 )
+def _decompose( (k,v) ):
+  for a in  filter( lambda xs: 'C' in xs[type_index], v ):
+    q3, pp3, p3, pp, p, q, op, s = _get_kinematics( datas[a] )
+    combination, q2 = _get_ff_coefs( pp, p, s, op )
+    print 'CTERM', k, q2, combination
+  if len(v) > 2 and len(list(set([ a[type_index] for a in v ]))):
+    print 'ABC'
+    ccs  = []
+    yss = []
+    for a in v:
+      q3, pp3, p3, pp, p, q, op, s = _get_kinematics( datas[a] )
+      F = Zg * -datas[a]['eff']['boot'][:,0]
+      combination, q2 = _get_ff_coefs( pp, p, s, op )
+      if combination == [ 0.0, 0.0, 0.0 ]:
+        print 'bad combination', v, combination
+      else:
+        F = F / combination[0]
+        combination = np.divide( combination , combination[0] ).tolist()
+        assert( not np.iscomplex( np.round( combination, 7 ) ).any() )
+        print k,q2, combination
+        ccs.append( combination )
+        yss.append( F )
+
+    ccs = np.asarray( ccs )
+    yss = np.asarray( yss )
+    ys  = np.mean( yss, 1 )
+    ss  = np.std(  yss, 1, ddof=1 )
+    _, _, rank, _ = la.lstsq( ccs, ys )
+    #print rank, k, rank == 3 and  k != (u'q04pp02p02',) and k != (u'q04pp03p03',)
+    if rank == 3:
+      print ccs
+      ABC = np.asarray(map( Fst, [ la.lstsq( ccs, yss[:,i] ) for i in range(yss.shape[-1]) ] )).real
+      ABCm = np.mean( ABC, 0 )
+      ABCs = np.std ( ABC, 0, ddof=1 )
+      resABC[k] = { 'q2':q2.real, 'C':{ 'boot':ABC[:,2], 'mean':ABCm[2], 'std':ABCs[2] }, 'B':{ 'boot':ABC[:,0], 'mean':ABCm[0], 'std':ABCs[0] }, 'A':{ 'boot':ABC[:,1], 'mean':ABCm[1], 'std':ABCs[1] } }
+progmap( 'Generating ABC decomposed data', _decompose, group3 )
+
+Axs = []
+Bxs = []
+Ab = []
+Bb = []
+Ay = []
+By = []
+As = []
+Bs = []
+Axs.append( 0.0 )
+Ab.append( Az )
+Ay.append( Azm )
+As.append( Azs )
+for k,v in resAB.items():
+  Axs.append( v['q2'] * (hbarc/a_fm)**2 )
+  Bxs.append( v['q2'] * (hbarc/a_fm)**2 )
+  Ab.append( v['A']['boot'] )
+  Ay.append( v['A']['mean'] )
+  As.append( v['A']['std']  )
+  Bb.append( v['B']['boot'] )
+  By.append( v['B']['mean'] )
+  Bs.append( v['B']['std']  )
+Ab = np.asarray( Ab )
+params = { 'fs':20, 'xlims':[-.1,4.0], 'ylims':[-0.1,0.5], 'includezero':True, 'xlabel':'$Q^2$ $(GeV^2)$' }
+fitA = BootFitCurve1D( np.asarray(Axs), np.swapaxes(Ab,0,1), np.asarray(As), dipole_func, boot_func=boot_object_errval_2 )
+fitB = BootFitCurve1D( np.asarray(Bxs), np.swapaxes(Bb,0,1), np.asarray(Bs), dipole_func, boot_func=boot_object_errval_2 )
+print 'A', fitA['val']
+print 'B', fitB['val']
+plot_dataA = { 'x':Axs, 'y':Ay, 's':As, 'l':'$M_2(Q^2)=A_{20}(Q^2)$'       , 'f':fitA }
+plot_dataB = { 'x':Bxs, 'y':By, 's':Bs, 'l':'$J(Q^2)-M_2(Q^2)=B_{20}(Q^2)$', 'f':fitB }
+ChromaPlot( [plot_dataA,plot_dataB], save='png/decomposedAB.eps', **params )
+params = { 'fs':20, 'xlims':[-.1,4.0], 'includezero':True, 'xlabel':'$Q^2$ $(GeV^2)$' }
+plot_dataB['c']=1
+ChromaPlot( [plot_dataB], save='png/decomposedB.eps', **params )
+
+Aqxs  = np.asarray( Aqxs )
+Aqxs =  -Aqxs * (hbarc/a_fm)**2
+Aqyss_normed = Aqyss[:,:] / Aqyss[-1,None,:]
+Aqys_normed, Aqss_normed  = mean_var( Aqyss_normed )
+Agxs = Axs
+Agyss_normed = Ab[:,:] / Ab[0,None,:]
+Agys_normed, Agss_normed = mean_var( Agyss_normed )
+fitQuarks = BootFitCurve1D( Aqxs[:-1], np.swapaxes(Aqyss_normed[:-1,:],0,1), Aqss_normed[:-1], normed_dipole_func, boot_func=boot_object_errval_2 )
+fitGluons = BootFitCurve1D( Agxs[1:] , np.swapaxes(Agyss_normed[1: ,:],0,1), Agss_normed[1: ], normed_dipole_func, boot_func=boot_object_errval_2 )
+params = { 'fs':20, 'xlims':[-.1,2.5], 'xlabel':'$Q^2$ $(GeV^2)$', 'ylims':[0,1], 'title':'$A_{20}/M_2$ Quark and Gluon Comparison' }
+quark_packet = { 'x':Aqxs, 'y':Aqys_normed, 's':Aqss_normed, 'f':fitQuarks, 'l':'$(A_{20}/M_2)^{u+d}(Q^2)$' }
+gluon_packet = { 'x':Agxs, 'y':Agys_normed, 's':Agss_normed, 'f':fitGluons, 'l':'$(A_{20}/M_2)^{g}(Q^2)$' }
+ChromaPlot( [gluon_packet,quark_packet], save='png/Acomparison.eps', **params )
+
+Axs = []
+Bxs = []
+Cxs = []
+Ab = []
+Bb = []
+Cb = []
+Ay = []
+By = []
+Cy = []
+As = []
+Bs = []
+Cs = []
+Axs.append( 0.0 )
+Ab.append( Az )
+Ay.append( Azm )
+As.append( Azs )
+for k,v in resABC.items():
+  Axs.append( v['q2'] * (hbarc/a_fm)**2 )
+  Bxs.append( v['q2'] * (hbarc/a_fm)**2 )
+  Cxs.append( v['q2'] * (hbarc/a_fm)**2 )
+  Ab.append( v['A']['boot'] )
+  Ay.append( v['A']['mean'] )
+  As.append( v['A']['std']  )
+  Bb.append( v['B']['boot'] )
+  By.append( v['B']['mean'] )
+  Bs.append( v['B']['std']  )
+  Cb.append( v['C']['boot'] )
+  Cy.append( v['C']['mean'] )
+  Cs.append( v['C']['std']  )
+assert( len( Cy ) )
+Ab = np.asarray( Ab )
+params = { 'fs':20, 'xlims':[-.1,4.0], 'ylims':[-0.1,0.5], 'includezero':True, 'xlabel':'$Q^2$ $(GeV^2)$' }
+fitA = BootFitCurve1D( np.asarray(Axs), np.swapaxes(Ab,0,1), np.asarray(As), dipole_func, boot_func=boot_object_errval_2 )
+fitB = BootFitCurve1D( np.asarray(Bxs), np.swapaxes(Bb,0,1), np.asarray(Bs), dipole_func, boot_func=boot_object_errval_2 )
+fitC = BootFitCurve1D( np.asarray(Cxs), np.swapaxes(Cb,0,1), np.asarray(Cs), dipole_func, boot_func=boot_object_errval_2 )
+print 'A', fitA['val']
+print 'B', fitB['val']
+print 'C', fitC['val']
+plot_dataA = { 'x':Axs, 'y':Ay, 's':As, 'l':'$M_2(Q^2) = A(Q^2)$', 'f':fitA }
+plot_dataB = { 'x':Bxs, 'y':By, 's':Bs, 'l':'$J(Q^2)-M_2(Q^2) = B(Q^2)$', 'f':fitB }
+plot_dataC = { 'x':Cxs, 'y':Cy, 's':Cs, 'l':'$d_1(Q^2) = C(Q^2)$', 'f':fitC }
+ChromaPlot( [plot_dataA,plot_dataB,plot_dataC], save='png/decomposedABC.eps', **params )
+params = { 'fs':20, 'xlims':[-.1,4.0], 'includezero':True, 'xlabel':'$Q^2$ $(GeV^2)$' }
+plot_dataB['c']=1
+ChromaPlot( [plot_dataB], save='png/decomposedABC_B.eps', **params )
+ChromaPlot( [plot_dataC], save='png/decomposedABC_C.eps', **params )
+
+Agxs = Axs
+Agyss_normed = Ab[:,:] / Ab[0,None,:]
+Agys_normed, Agss_normed = mean_var( Agyss_normed )
+fitGluons = BootFitCurve1D( Agxs[1:] , np.swapaxes(Agyss_normed[1: ,:],0,1), Agss_normed[1: ], normed_dipole_func, boot_func=boot_object_errval_2 )
+params = { 'fs':20, 'xlims':[-.1,2.5], 'xlabel':'$Q^2$ $(GeV^2)$', 'ylims':[0,1], 'title':'$A_{20}$ comparison' }
+gluon_packet = { 'x':Agxs, 'y':Agys_normed, 's':Agss_normed, 'f':fitGluons, 'l':'$(A_{20}/M_2)^{g}(Q^2)$' }
+ChromaPlot( [gluon_packet,quark_packet], save='png/ABC_Acomparison.eps', **params )

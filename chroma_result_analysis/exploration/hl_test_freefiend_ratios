@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl                   import *
+from hl_naming_convention import parameter_map
+from hl_load_json         import LoadCorrelatorJSON, LoadCorrelatorBootstraps, LoadCorrelatorData
+from hl_ratios            import *
+from hl_ratios            import _hlRatioSplitByOpNum, _lambda_getter
+from hl_plot              import ChromaPlot
+
+from ast       import literal_eval
+from functools import partial
+
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+save_path = args.get('save_dir','.')+'/'
+
+##-- SETUP CORRELATORS --##
+cors_json, zero_cors_json = LoadCorrelatorJSON( json_files )
+map( lambda c: LoadCorrelatorData( args, c ),      cors_json )
+map( lambda c: LoadCorrelatorData( args, c ), zero_cors_json )
+
+plot_params = get_plot_args( args )
+#plot_params['ylims'] = [-2,2]
+if args['r'] == 'mass':
+  plot_params['xlims']=[0,40]
+  print 'PERFORMING MASS RATIO'
+  nt = zero_cors_json[0]['dim'][-1]
+  mass = np.mean( np.asarray([ c['unculled_sync_correlator'] for c in filter( lambda x: x['pp'] == [0,0,0], zero_cors_json ) ]), 0 )[0,0,:]
+  effmass = np.log( np.abs( np.divide( mass, np.roll( mass, -1 ) ) ) )
+  x = np.arange(nt) + 0.5
+  plot_packet = { 'x':x, 'y':effmass }
+  ChromaPlot( [plot_packet], save=save_path+'png/eff_freefield_{}.png'.format(nt), **plot_params )
+else:
+  plot_params['xlims']=[0,40]
+  print 'PERFORMING EVEN RATIO'
+  nt = cors_json[0]['dim'][-1]
+  zero_set,one_set = _hlRatioSplitByOpNum( cors_json, [0,1] )
+  zero_cor = np.mean( np.asarray([ c['unculled_sync_correlator'] for c in zero_cors_json ]), 0 )[0,0,:]
+  split_one_set = Partition( lambda cor1, cor2: abs(_lambda_getter(cor1)[0]) == abs(_lambda_getter(cor2)[0]), one_set )
+  plot_packets = []
+  id = cor_id( one_set[0], keys=exclude(lam_id_keys+['momentum'],['mom']) )
+  for set in split_one_set:
+    lam = _lambda_getter(set[0])[0]
+    pos_lam_cors, neg_lam_cors = SplitFilter( lambda c: _lambda_getter(c)[0]>0, set )
+    pos_cor = np.mean( np.asarray([ c['unculled_sync_correlator'] for c in pos_lam_cors ]), 0 )[0,0,:]
+    neg_cor = np.mean( np.asarray([ c['unculled_sync_correlator'] for c in neg_lam_cors ]), 0 )[0,0,:]
+    rat = (pos_cor+neg_cor)/zero_cor
+    effmass = np.log( np.abs( np.divide( rat, np.roll( rat, -1 ) ) ) ) #/ lam**2
+    x = np.arange(nt) + 0.5
+    plot_packet = { 'x':x, 'y':effmass }
+    plot_packets.append( plot_packet )
+  ChromaPlot( plot_packets, save=save_path+'png/eff_freefield_{}_{}.png'.format(id,args.get('save_append','')), **plot_params )
