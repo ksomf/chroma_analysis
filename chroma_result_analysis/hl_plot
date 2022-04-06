@@ -1,0 +1,33 @@
+#!/bin/env python
+
+from hl import *
+from hl_plot import ChromaPlot, Plot, MultiPlot
+import multiprocessing
+
+args, yml_files = ArgvToArgsAndFiles( {}, 'yml' )
+
+files_to_plot = map( LoadJSONFile, yml_files )
+for d in files_to_plot:
+  plotstr = d.get('plotter','plot')
+  if plotstr == 'plot':
+    #print 'Plot'
+    d['plotter'] = Plot
+  elif plotstr == 'mplot':
+    #print 'Multiplot'
+    d['plotter'] = MultiPlot
+
+plots_to_do = [(d['data'],d['plotter'],d['extra']) for d in files_to_plot]
+
+def plot_runner( (plot_params,plotter,kwargs) ):
+  ChromaPlot( plot_params, plotter=plotter, **kwargs )
+#for plot_params,plotter,kwargs in plots_to_do:
+#  print 'Plotting'
+#  ChromaPlot( plot_params, plotter=plotter, **kwargs )
+#exit(1)
+
+#filter_plots = filter( lambda (d,kwargs): kwargs['save'] == 'png/nucleon_diag_lambda_spread_w_plot_synthetic_quark1_minus_quark2_g3_subtracted.png', plots_to_do )
+pool = multiprocessing.Pool( processes=32 )
+#progpoolmap( 'Plotting: ', pool, plot_runner, filter_plots )
+progpoolmap( 'Plotting: ', pool, plot_runner, plots_to_do )
+pool.close()
+pool.join()

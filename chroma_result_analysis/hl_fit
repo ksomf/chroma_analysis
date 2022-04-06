@@ -1,0 +1,488 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl                    import *
+from hl_naming_conventions import parameter_map, ChromaPrinter
+from hl_plot               import ChromaPlot
+from hl_ratios             import cor_id, cor_id_dict
+from hl_gamma              import *
+
+from ast       import literal_eval
+from functools import partial
+from itertools import groupby
+
+hbarc = 197.32697 #eV nm
+vector_renorm = (0.8574, 0.0009)
+axial_renorm  = (0.8728, 0.0033)
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+if 'xlims' in args:
+  args['xlims'] = literal_eval(args['xlims'])
+
+datas = map( LoadJSONFile, json_files )
+
+data_keys = ['lambdas', 'fit', 'type', 'mom', 'hadron', 'op', 'eff', 'file_prefix', 'weight_prefix', 'qsq', 'data_type', 'momentum', 'pol_type', 'q', 'label', 'ff', 'pp', 's', 'p' ]
+secondary_split_keys = [ 'fit', 'hadron', 'op' ]
+unsplittedffs = [ 'cloverB2mE2', 'cloverExB_x' ]
+
+fit_type_dict = {
+  'spin_odd_ratio'  : 'dE'
+, 'spin_even_ratio' : 'd2E'
+, 'simple_even'     : 'd2E'
+, 'odd_odd'         : 'd2E'
+}
+
+data_sets = Partition( partial(EqualExcept, data_keys), datas )
+#for d in datas:
+#  print [ (k,d[k]) for k in exclude(d.keys(),data_keys) ]
+
+for data_set in data_sets:
+  filename = '_'.join( map( ChromaPrinter,  sorted([ (k,v) for k,v in data_set[0].items() if k not in data_keys ]) ) )
+  dim = data_set[0]['dim']
+  a   = 0.074
+  #print filename
+  result = {}
+  plot_packets = {}
+
+  print [ cor.keys() for cor in data_set ]
+  mass_terms, feynhell_terms              = SplitFilter( lambda cor: 'lambdas' not in cor, data_set   )
+  threept_terms, mass_terms               = SplitFilter( lambda cor: cor.get('fit') in ['twodim_threept','twodim_threeptr'], mass_terms )
+  unsplitted_threept_terms, threept_terms = SplitFilter( lambda cor: cor['op'] in unsplittedffs, threept_terms )
+  threept_terms_AB                        = filter( lambda cor: cor.get('op') in [ 'cloverExB_x_AB' ], mass_terms )
+  mass_terms                              = [ mt for mt in mass_terms if mt not in threept_terms_AB ]
+  print len(mass_terms), len(feynhell_terms), len(threept_terms), len(unsplitted_threept_terms), len(threept_terms_AB)
+  #mass_json_res = []
+  if len(mass_terms):
+    print 'Performing mass fit'
+    for mass_term in mass_terms:
+      hadron    = mass_term['hadron']
+      mom2      = mass_term['mom']
+      mass_boot = np.asarray(mass_term['eff']['boot'])[:,-1]
+      mass_chi2 = mass_term['eff']['chi2dof']
+      #mass_json_res.append( {'pp':momentum} )
+      if mom2 not in result:
+        result[mom2] = {}
+      result[mom2][hadron]          = boot_object_errval(mass_boot, 2)
+      result[mom2][hadron + '_chi2dof'] = { 'val' : mass_chi2 }
+      result[mom2][hadron + '_mev'] = boot_object_errval(mass_boot * hbarc / a, 2)
+      print result[mom2][hadron+'_mev']['mean'], result[mom2][hadron + '_mev']['std'], result[mom2][hadron+'_mev']['val']
+  #print mass_json_res
+
+  def _full_four_kinematics_transform( threept, boot_index=-1 ):
+    pp3, q3, p3, sync_mom2, src_mom2 = kinematics_transform( threept )
+    hadron = threept['hadron']
+    if boot_index == -1:
+      mass = result[0][hadron]['mean']
+    else:
+      mass = result[0][hadron]['boot'][boot_index]
+    #pp, q, p = four_kinematics_transform( sync_mass, pp3, src_mass, p3, *dim[:-1] )
+    pp = ff_dispersion_relation( mass, pp3, *dim[:-1] )
+    p  = ff_dispersion_relation( mass, p3 , *dim[:-1] )
+    q  = pp - p
+
+    #print pp3, q3, p3, sync_mom2, src_mom2, pp, q, p
+    return mass, pp, q, p
+
+  def _coef_generator( threept, boot_index=-1, return_q2=False ):
+    TwoPointGamma = euclidean_pos_parity_projector
+    hadron = threept['hadron']
+    s = threept['s']
+    Gamma = euclidean_pos_parity_projector*s[0] + euclidean_pos_parity_polx_projector*s[1] + euclidean_pos_parity_poly_projector*s[2] + euclidean_pos_parity_polz_projector*s[3]
+    mass, pp, q, p = _full_four_kinematics_transform( threept, -1 )
+
+    if threept['op'].startswith('cloverExB_x'):
+      coefs, q2 = EuclideanGluonIrrep2( mass, 1, pp, p, TwoPointGamma=TwoPointGamma, Gamma=Gamma )
+      #print coefs
+    elif threept['op'] == 'cloverB2mE2':
+      coefs, q2 = EuclideanGluonIrrep1( mass,    pp, p, TwoPointGamma, Gamma )
+    else: 
+      print 'unkown operator', threept['op']
+      exit(1)
+    data_type = threept.get('data_type','real')
+    if data_type == 'real':
+      coefs = np.asarray(coefs).real.tolist()
+    elif data_type == 'imag':
+      coefs = np.asarray(coefs).imag.tolist()
+    if return_q2:
+      return coefs, q2
+    else:
+      return coefs
+
+
+  if len(unsplitted_threept_terms):
+    nb = len(unsplitted_threept_terms[0]['eff']['boot'])
+    hadron = unsplitted_threept_terms[0]['hadron']
+    combinations = [ (kinematics_transform(threept,return_q_mom2=True)[-3:],threept) for threept in unsplitted_threept_terms ]
+    sets = groupby( combinations, Fst )
+    extracted_points = [[],[],[]]
+
+    json_res = []
+    for (group,set) in sets:
+      set = map(Snd,list(set))
+      print 'group'
+      for threept in set:
+        pp3, q3, p3, sync_mom2, src_mom2 = kinematics_transform( threept )
+        print pp3, q3, p3, sync_mom2, src_mom2
+        coefs, q4 = _coef_generator( threept, return_q2=True )
+        q4 = q4.real
+        json_res.append( { 'pp':pp3, 'q':q3, 'p':p3, 'src':src_mom2, 'sync':sync_mom2, 'fit':np.asarray(threept['eff']['boot'])[:,0].tolist(), 'coef':coefs, 'q4':q4 } )
+        #print np.asarray(threept['eff']['boot'])[:,0]
+    #json.dump( json_res, open('test_data.json','w+'), cls=NumpyJsonEncoder )
+    #exit(1)
+
+    for i,(group,set) in enumerate(sets):
+      set = map(Snd,list(set))
+      coef_list = np.asarray([_coef_generator(threept) for threept in set])
+      coef_boot_list = np.asarray([ [_coef_generator(threept,ib) for threept in set] for ib in range(nb) ])
+      useable_combination_indexes, extractable_combination_indexes = GetDecomposableElements( coef_list )
+      #print useable_combination_indexes, extractable_combination_indexes
+      if len(useable_combination_indexes):
+        A   = np.asarray([ [ coef_list[j,i] for i in extractable_combination_indexes ] for j in useable_combination_indexes ])
+        As  = np.asarray([ [ coef_boot_list[:,j,i] for i in extractable_combination_indexes ] for j in useable_combination_indexes ])
+        As  = np.swapaxes( np.swapaxes( As, 0, 1 ), 0, 2 ) 
+        ys  = np.asarray([ set[j]['eff']['mean'][0] for j in useable_combination_indexes ])
+        yss = np.asarray([ np.asarray(set[j]['eff']['boot'])[:,0] for j in useable_combination_indexes ])
+        yss = np.swapaxes( yss, 0, 1 )
+        ss  = np.asarray([ set[j]['eff']['std'][0] for j in useable_combination_indexes ])
+        #print A.shape, As.shape, ys.shape, yss.shape, ss.shape
+        Ab = As / ss[None,:,None]
+        yb = yss / ss[None,:]
+        #print Ab.shape, yb.shape
+        _, x = _coef_generator( set[0], return_q2=True )
+        ffs = np.asarray([ Fst(la.lstsq( Ab[ib], yb[ib] )) for ib in range(nb) ])
+        for j,i in enumerate(extractable_combination_indexes):
+          extracted_points[i].append( (x,boot_object_errval_2(ffs[:,j])) )
+    #print extracted_points
+      
+    
+    ops = 'ABC'
+    for i in range(len(extracted_points)):
+      op = 'clover'+ops[i]
+      xs, ys, yss, ss = map(np.asarray, zip(*[ (x, f['mean'], f['boot'], f['std']) for x,f in extracted_points[i] ]))
+      yss = np.swapaxes( yss, 0, 1 )
+      xs = xs.real
+      fit = BootFitCurve1D( xs, yss, ss, dipole_func, boot_func=boot_object_errval_2 )
+      plot_packet = { 'x':xs, 'y':ys, 's':ss, 'f':fit }
+      extra_args = dict(args)
+      if 'B' in op:
+        extra_args['ylims'] = '[-2.0,0.0]'
+      if 'A' in op:
+        extra_args['ylims'] = '[0.0,1.0]'
+      extra_args['xlabel'] = '$Q^2$'
+      extra_args['ylabel'] = '$'+ops[i]+'_{20}$'
+      ChromaPlot( [plot_packet], save='png/'+'_'.join([ hadron,op,filename ]) + '.png', **extra_args )
+      plot_packet.pop('f')
+      ChromaPlot( [plot_packet], save='png/'+'_'.join([ hadron,op,filename ]) + 'unfitted.png', **extra_args )
+      chain_to_dict( result      , ['decomposedFF',hadron,op], fit )
+      chain_to_dict( plot_packets, ['decomposedFF',hadron,op], plot_packet )
+
+
+      #inte_coef_packets = []
+      #inte_qsqs = []
+      #yss.append( np.asarray( threept_raw['eff']['boot'] )[:,0] )
+      #print threept_raw.keys()
+      #print threept_raw['op'], threept_raw['pol_type'], threept_raw['data_type']
+      #hadron = threept_raw['hadron']
+    #  point_kinematics.append( (threept_raw['op'],pp3.tolist(),q3.tolist(),p3.tolist()) )
+    #  TwoPointGamma = euclidean_pos_parity_projector
+    #  if threept_raw['pol_type'] == 'unpol':
+    #    Gamma = euclidean_pos_parity_projector
+    #  elif threept_raw['pol_type'] == 'pol':
+    #    Gamma = euclidean_pos_parity_pol_projector
+    #  for i in range(nb):
+    #    sync_mass = result[sync_mom2][hadron]['boot'][i]
+    #    src_mass  = result[src_mom2][hadron]['boot'][i]
+    #    mass      = result[0][hadron]['boot'][i]
+    #    pp, q, p  = four_kinematics_transform( sync_mass, pp3, src_mass, p3, *dim[:-1] )
+    #    if threept_raw['op'] == 'cloverExB_x':
+    #      coefs, q2 = EuclideanGluonIrrep2( mass, 1, pp, p, TwoPointGamma, Gamma )
+    #    elif threept_raw['op'] == 'cloverB2mE2':
+    #      coefs, q2 = EuclideanGluonIrrep1( mass,    pp, p, TwoPointGamma, Gamma )
+    #    else: 
+    #      print 'unkown operator', threept_raw['op']
+    #      exit(1)
+    #    inte_qsqs.append(q2.real)
+    #    if threept_raw['data_type'] == 'real':
+    #      coefs = np.asarray(coefs).real.tolist()
+    #    elif threept_raw['data_type'] == 'imag':
+    #      coefs = np.asarray(coefs).imag.tolist()
+    #    coefs = [q2.real] + coefs
+    #    if q2.real not in qsqs_translations:
+    #      qsqs_translations[q2.real] = (sync_mom2,sum([(a-b)**2 for a,b in zip(pp3,p3)]),p3)
+    #    inte_coef_packets.append(coefs)
+    #    #if i == 0:
+    #    #  print coefs
+    #  coef_packets.append( inte_coef_packets )
+    #  qsqs.append( np.mean(inte_qsqs) )
+    #points_coefs = np.swapaxes( coef_packets, 0, 1 )
+    #packets      = np.swapaxes( points_coefs, 1, 2 )
+    #yss          = np.swapaxes( yss         , 0, 1 )
+
+
+
+    #print packets.shape, yss.shape
+    #res = BootFitCurve1DOverBootX( packets, yss, np.std(yss,0), triple_dipole_func, boot_func=boot_object_errval_2 )
+    #print res.keys()
+    ##extract each of the three dipoles and perform data point extrapolation
+    #extras = dict(filter( lambda (a,b): a not in [ 'std', 'mean', 'boot', 'function', 'type' ], res.items() ))
+    #boots  = res['boot']
+    #dipoleA = boots[:,0:2]
+    #dipoleB = boots[:,2:4]
+    #dipoleC = boots[:,4:6]
+    #qsqs    = points_coefs[0,:,0]
+    #coefs   = points_coefs[:,:,1:]
+    #effective_data = np.zeros( coefs.shape )
+    #for i in range(nb):
+    #  evalled_dipole_A = dipole_func_imp(qsqs,*dipoleA[i])
+    #  evalled_dipole_B = dipole_func_imp(qsqs,*dipoleB[i])
+    #  #evalled_dipole_B = np.zeros(evalled_dipole_A.shape)
+    #  evalled_dipole_C = dipole_func_imp(qsqs,*dipoleC[i])
+
+    #  evalled_dipoles = np.swapaxes(np.asarray([evalled_dipole_A,evalled_dipole_B,evalled_dipole_C]),0,1)
+    #  evalled_dipole_weights = evalled_dipoles * coefs[i]
+    #  threerange = np.arange(3)
+    #  #print yss.shape, evalled_dipole_weights.shape, coefs.shape
+    #  for j in range(3):
+    #    mask = coefs[i,:,j] != 0
+    #    #print yss[i,mask].shape, evalled_dipole_weights[:,threerange!=j][mask].shape, coefs[i,mask,j].shape
+    #    effective_data[i,mask,j] = (yss[i,mask] - np.sum(evalled_dipole_weights[:,threerange!=j][mask,:],1))/coefs[i,mask,j]
+    #print effective_data.shape
+    #effective_data_A = effective_data[:,:,0]
+    #effective_data_B = effective_data[:,:,1]
+    #effective_data_C = effective_data[:,:,2]
+    #effective_data_A = boot_object_errval_2( effective_data_A )
+    #effective_data_B = boot_object_errval_2( effective_data_B )
+    #effective_data_C = boot_object_errval_2( effective_data_C )
+    #dipoleA_fit = boot_object( dipoleA, type='function', function=dipole_func, **extras )
+    #dipoleB_fit = boot_object( dipoleB, type='function', function=dipole_func, **extras )
+    #dipoleC_fit = boot_object( dipoleC, type='function', function=dipole_func, **extras )
+    #plot_packet_A = { 'x':qsqs, 'y':effective_data_A['mean'], 's':effective_data_A['std'], 'f':dipoleA_fit }
+    #plot_packet_B = { 'x':qsqs, 'y':effective_data_B['mean'], 's':effective_data_B['std'], 'f':dipoleB_fit }
+    #plot_packet_C = { 'x':qsqs, 'y':effective_data_C['mean'], 's':effective_data_C['std'], 'f':dipoleC_fit }
+    #ChromaPlot( [plot_packet_A], save='png/'+'_'.join([ hadron,'cloverAreconstructed',filename ]) + '.png', **args )
+    #ChromaPlot( [plot_packet_B], save='png/'+'_'.join([ hadron,'cloverBreconstructed',filename ]) + '.png', **args )
+    #ChromaPlot( [plot_packet_C], save='png/'+'_'.join([ hadron,'cloverCreconstructed',filename ]) + '.png', **args )
+    #print res['val']
+
+    #mean_coefs = np.mean( coefs, 0 )
+    #for i,(q2,c,A,B,C,v) in enumerate(zip(qsqs.tolist(),mean_coefs.tolist(),effective_data_A['val'], effective_data_B['val'], effective_data_C['val'], point_kinematics)):
+    #  print '{: <60}{: <20}{: <12}{: <12}{: <12}{:}'.format( v, q2, A, B, C, c )
+
+  operator_threept_set = Partition( partial(SubsetEqual, secondary_split_keys), threept_terms )
+  for threept_set in operator_threept_set:
+    ops     = map(Get('op'),threept_set)
+    hadrons = map(Get('hadron'),threept_set)
+    if not all(map(AllEqual,[ops])):
+      print 'Threept unable to fit on differented fitted data'
+      exit(1)
+    op = ops[0]
+    hadron = hadrons[0]
+
+    xs  = np.asarray([ s['qsq']        for s in threept_set ])
+    ys  = np.asarray([ s['eff']['mean'][0] for s in threept_set ])
+    yss = np.swapaxes( np.asarray([ s['eff']['boot'][:] for s in threept_set ]), 0, 1 )[:,:,0]
+    ss  = np.asarray([ s['eff']['std'][0]  for s in threept_set ])
+    fit = BootFitCurve1D( xs, yss, ss, dipole_func, jac=dipole_jac, boot_func=boot_object_errval_2 )
+    xlims = [0,np.max(xs)*1.1]
+    plot_packet = { 'x':xs, 'y':ys, 's':ss, 'f':fit }
+    ChromaPlot( [plot_packet], save='png/'+'_'.join([ hadron,op,filename ]) + '.png', xlims=xlims, **args )
+    chain_to_dict( result      , ['R',hadron,op], fit         )
+    chain_to_dict( plot_packets, ['R',hadron,op], plot_packet )
+
+  #simultaneous threept_fits
+  triple_dipole_func = 'lambda (x,c1,c2,c3), a1,b1, a2,b2, a3,b3: c1*dipole_func_imp(x,a1,b1) + c2*dipole_func_imp(x,a2,b2) + c3*dipole_func_imp(x,a3,b3)'
+  #triple_dipole_func = 'lambda (x,c1,c2,c3), a1,b1, a2,b2, a3,b3: c1*dipole_func_imp(x,a1,b1) +                               c3*dipole_func_imp(x,a3,b3)'
+  if len(unsplitted_threept_terms):
+    nb = len(unsplitted_threept_terms[0]['eff']['boot'])
+    coef_packets = []
+    yss = []
+    point_kinematics = []
+    qsqs_translations = {}
+    for threept_raw in unsplitted_threept_terms:
+      inte_coef_packets = []
+      yss.append( np.asarray( threept_raw['eff']['boot'] )[:,0] )
+      #print threept_raw.keys()
+      #print threept_raw['op'], threept_raw['pol_type'], threept_raw['data_type']
+      hadron = threept_raw['hadron']
+      pp3, q3, p3, sync_mom2, src_mom2 = kinematics_transform( threept_raw )
+      point_kinematics.append( (threept_raw['op'],pp3.tolist(),q3.tolist(),p3.tolist()) )
+      TwoPointGamma = euclidean_pos_parity_projector
+      if threept_raw['pol_type'] == 'unpol':
+        Gamma = euclidean_pos_parity_projector
+      elif threept_raw['pol_type'] == 'pol':
+        Gamma = euclidean_pos_parity_pol_projector
+      for i in range(nb):
+        sync_mass = result[sync_mom2][hadron]['boot'][i]
+        src_mass  = result[src_mom2][hadron]['boot'][i]
+        mass      = result[0][hadron]['boot'][i]
+        pp, q, p  = four_kinematics_transform( sync_mass, pp3, src_mass, p3, *dim[:-1] )
+        if threept_raw['op'] == 'cloverExB_x':
+          coefs, q2 = EuclideanGluonIrrep2( mass, 1, pp, p, TwoPointGamma, Gamma )
+        elif threept_raw['op'] == 'cloverB2mE2':
+          coefs, q2 = EuclideanGluonIrrep1( mass,    pp, p, TwoPointGamma, Gamma )
+        else: 
+          print 'unkown operator', threept_raw['op']
+          exit(1)
+        if threept_raw['data_type'] == 'real':
+          coefs = np.asarray(coefs).real.tolist()
+        elif threept_raw['data_type'] == 'imag':
+          #coefs = np.asarray(coefs).imag.tolist()
+          coefs = np.asarray(coefs).imag.tolist()
+        coefs = [q2.real] + coefs
+        if q2.real not in qsqs_translations:
+          qsqs_translations[q2.real] = (sync_mom2,sum([(a-b)**2 for a,b in zip(pp3,p3)]),p3)
+        inte_coef_packets.append(coefs)
+        #if i == 0:
+        #  print coefs
+      coef_packets.append( inte_coef_packets )
+    points_coefs = np.swapaxes( coef_packets, 0, 1 )
+    packets      = np.swapaxes( points_coefs, 1, 2 )
+    yss          = np.swapaxes( yss         , 0, 1 )
+
+    print packets.shape, yss.shape
+    res = BootFitCurve1DOverBootX( packets, yss, np.std(yss,0), triple_dipole_func, boot_func=boot_object_errval_2 )
+    print res.keys()
+    #extract each of the three dipoles and perform data point extrapolation
+    extras = dict(filter( lambda (a,b): a not in [ 'std', 'mean', 'boot', 'function', 'type' ], res.items() ))
+    boots  = res['boot']
+    dipoleA = boots[:,0:2]
+    dipoleB = boots[:,2:4]
+    dipoleC = boots[:,4:6]
+    qsqs    = points_coefs[0,:,0]
+    coefs   = points_coefs[:,:,1:]
+    effective_data = np.zeros( coefs.shape )
+    for i in range(nb):
+      evalled_dipole_A = dipole_func_imp(qsqs,*dipoleA[i])
+      evalled_dipole_B = dipole_func_imp(qsqs,*dipoleB[i])
+      #evalled_dipole_B = np.zeros(evalled_dipole_A.shape)
+      evalled_dipole_C = dipole_func_imp(qsqs,*dipoleC[i])
+
+      evalled_dipoles = np.swapaxes(np.asarray([evalled_dipole_A,evalled_dipole_B,evalled_dipole_C]),0,1)
+      evalled_dipole_weights = evalled_dipoles * coefs[i]
+      threerange = np.arange(3)
+      #print yss.shape, evalled_dipole_weights.shape, coefs.shape
+      for j in range(3):
+        mask = coefs[i,:,j] != 0
+        #print yss[i,mask].shape, evalled_dipole_weights[:,threerange!=j][mask].shape, coefs[i,mask,j].shape
+        effective_data[i,mask,j] = (yss[i,mask] - np.sum(evalled_dipole_weights[:,threerange!=j][mask,:],1))/coefs[i,mask,j]
+    print effective_data.shape
+    effective_data_A = effective_data[:,:,0]
+    effective_data_B = effective_data[:,:,1]
+    effective_data_C = effective_data[:,:,2]
+    effective_data_A = boot_object_errval_2( effective_data_A )
+    effective_data_B = boot_object_errval_2( effective_data_B )
+    effective_data_C = boot_object_errval_2( effective_data_C )
+    dipoleA_fit = boot_object( dipoleA, type='function', function=dipole_func, **extras )
+    dipoleB_fit = boot_object( dipoleB, type='function', function=dipole_func, **extras )
+    dipoleC_fit = boot_object( dipoleC, type='function', function=dipole_func, **extras )
+    plot_packet_A = { 'x':qsqs, 'y':effective_data_A['mean'], 's':effective_data_A['std'], 'f':dipoleA_fit }
+    plot_packet_B = { 'x':qsqs, 'y':effective_data_B['mean'], 's':effective_data_B['std'], 'f':dipoleB_fit }
+    plot_packet_C = { 'x':qsqs, 'y':effective_data_C['mean'], 's':effective_data_C['std'], 'f':dipoleC_fit }
+    ChromaPlot( [plot_packet_A], save='png/'+'_'.join([ hadron,'cloverAreconstructed',filename ]) + '.png', **args )
+    ChromaPlot( [plot_packet_B], save='png/'+'_'.join([ hadron,'cloverBreconstructed',filename ]) + '.png', **args )
+    ChromaPlot( [plot_packet_C], save='png/'+'_'.join([ hadron,'cloverCreconstructed',filename ]) + '.png', **args )
+    print res['val']
+
+    mean_coefs = np.mean( coefs, 0 )
+    for i,(q2,c,A,B,C,v) in enumerate(zip(qsqs.tolist(),mean_coefs.tolist(),effective_data_A['val'], effective_data_B['val'], effective_data_C['val'], point_kinematics)):
+      print '{: <60}{: <20}{: <12}{: <12}{: <12}{:}'.format( v, q2, A, B, C, c )
+
+
+  operator_sets = Partition( partial(SubsetEqual, secondary_split_keys), feynhell_terms )
+  for set in operator_sets:
+    coefss    = [ s['eff']['coefs'] for s in set ]
+    fit_types = [ s['fit'] for s in set ]
+    ops       = [ s['op']  for s in set ]
+    hadrons   = [ s['hadron'] for s in set ]
+    qs        = [ s['q'] for s in set ]
+    if not all(map(AllEqual,[coefss,fit_types,ops,hadrons])):
+      print 'Unable to fit on differented fitted data'
+      exit(1)
+    coefs = coefss[0]
+    fit_type = fit_types[0]
+    op       = '_'.join( ops[0] )
+    q        = qs[0]
+    hadron   = hadrons[0]
+
+    xs    = np.asarray([ s.get('lambdas',[0.0])[0] for s in set ])
+    ys    = np.asarray([ s['eff']['mean'][0] for s in set ])
+    datas = np.swapaxes( np.asarray([ s['eff']['boot'] for s in set ])[:,:,0], 0, 1 )
+    ss    = np.asarray([ s['eff']['std'][0]  for s in set ])
+    fit   = BootFitPoly1D( xs, datas, ss, coefs, boot_func=boot_object_errval_2 )
+    plot_packet = { 'x':xs, 'y':ys, 's':ss, 'f':fit }
+    ChromaPlot( [plot_packet], save='png/'+'_'.join([ hadron,op,fit_type,filename ]) +'.png', **args )
+    chain_to_dict( result      , [fit_type_dict[fit_type],hadron,op], fit         )
+    chain_to_dict( plot_packets, [fit_type_dict[fit_type],hadron,op], plot_packet )
+
+  
+  if len(threept_terms_AB):
+    nb = len(threept_terms_AB[0]['eff']['boot'])
+    op = threept_terms_AB[0]['op']
+    res = []
+    for point in threept_terms_AB:
+      point['momentum'] = point['pp']
+      _, q2 = _coef_generator( point, return_q2=True )
+      q2 = q2.real
+      coef_boot = []
+      for ib in range(nb):
+        coef = _coef_generator( point, ib )
+        assert( np.isclose(coef[0],coef[1]) )
+        assert( coef[-1] == 0.0 )
+        coef_boot.append(coef[0])
+      point_boot = np.divide( np.asarray(point['eff']['boot'])[:,0], coef_boot )
+      point_mean = np.mean( point_boot )
+      point_std  = np.std(  point_boot )
+      res.append( (q2,point_mean,point_std,point_boot) )
+    qs, AB_means, AB_stds, AB_boots = zip(*res)
+    AB_boots = np.swapaxes( AB_boots, 0, 1 )
+    dipole_fit = BootFitCurve1D( np.asarray(qs), np.asarray(AB_boots), np.asarray(AB_stds), dipole_func, boot_func=boot_object_errval_2 )
+    #print res
+    
+    plot_packet = { 'x':qs, 'y':AB_means, 's':AB_stds, 'f':dipole_fit }
+    ChromaPlot( [plot_packet], save=args.get('save_dir','.')+'/png/'+op+'.png', **args )
+
+
+
+
+
+
+
+  if 'g5g5' in result[0]:
+    result[0]['mpixL'] = boot_object_errval( dim[0] * result[0]['g5g5']['boot'], 0 )
+
+  if 'dE' in result:
+    for hadron in result['dE']:
+      if hadron in result[0]:
+        for op in result['dE'][hadron]:
+          res = result['dE'][hadron][op]['boot'][:,0] / ( 2*result[0][hadron]['boot'] )
+          if 'g5' in op:
+            res = res * GenVal( *(axial_renorm + res.shape) )
+          elif 'g1' in op or 'g2' in op or 'g3' or 'g4' in op:
+            res = res * GenVal( *(vector_renorm + res.shape) )
+          chain_to_dict( result, ['dEM',hadron,op], boot_object_errval_2( res ) )
+          if hadron == 'nucleon' and op == 'ig3g5':
+            result['gA'] = boot_object_errval( -res * 2*result[0][hadron]['boot'], 2 )
+          print op == 'ig3g5', 'delta3half' in result[0]
+          if op == 'ig3g5' and 'delta3half' in result[0]:
+            numerical_factor = (1.0/1.17)*(6/(5*np.sqrt(3)))
+            mass_factor      = 2 * result[0]['delta3half']['boot'] / ( result[0]['delta3half']['boot'] + result[0]['nucleon']['boot'] )
+            result['C5AQM']  = boot_object_errval( numerical_factor * mass_factor * -res, 2 )
+
+
+  if 'd2E' in result:
+    for hadron in result['d2E']:
+      for op in result['d2E'][hadron]:
+        print 'Performing Second Order Fit for', hadron, op
+        if hadron == 'nucleon' and op == 'ig3g5' and 'nucleon' in result[0] and 'delta3half' in result[0]:
+          mass_part = result[0]['nucleon']['boot'] * result[0]['delta3half']['boot'] * ( result[0]['nucleon']['boot'] - result[0]['delta3half']['boot'] )
+          res = np.sqrt(np.abs( (3.0/4.0) * result['d2E'][hadron][op]['boot'][:,0] * mass_part ) )
+          res = res * GenVal( *(axial_renorm + res.shape ) )
+          result['C5A'] = boot_object_errval( res, 2 )
+
+
+  pretty_result = dict([ (k,valify(v)) if type(v) is dict else (k,v) for k,v in result.items() ])
+  pretty_result['prefix'] = filename
+  print pretty_result
+  open( 'fit/'            + filename + '.yml', 'w+' ).write( json.dumps( pretty_result ) )
+  open( 'fit/plot_packet' + filename + '.yml', 'w+' ).write( json.dumps( plot_packets, cls=NumpyJsonEncoder ) )

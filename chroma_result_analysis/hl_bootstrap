@@ -1,0 +1,153 @@
+#!/usr/bin/env python
+
+import numpy as np
+import os
+
+from hl                   import *
+from hl_naming_convention import cor_path, parameter_map
+from hl_load_json         import LoadCorrelatorJSON, LoadCorrelatorData
+
+from ast             import literal_eval
+from functools       import partial
+from multiprocessing import Pool
+
+sync_twopt = None
+current    = None
+nbins      = None
+boot_stamp = None
+def _Binner( xs ):
+  res = np.mean( np.asarray([ xs[bin_size*i:bin_size*(i+1)] for i in range(nbins) ]), 1 )
+  return res
+def tau_boot( itau ):
+  intermediate = _Binner( sync_twopt[:,:,:] * current[:,:,itau,None] )
+  return itau,(np.tensordot( boot_stamp, intermediate, (1,0) ) / float(nbins))
+if __name__ == "__main__":
+  args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+  feynhell_cors_json, zero_cors_json = LoadCorrelatorJSON( json_files )
+  full_cors_json = feynhell_cors_json + zero_cors_json
+  if 'noupdate' in args:
+    cors_json = filter( lambda cor: not os.path.isfile(cor_path(cor,'boot_sync_cor_file')), full_cors_json )
+    print dbl_report( 'Not Recalculating Bootstraps', len(json_files), len(cors_json) )
+  else:
+    cors_json = full_cors_json
+  if not len(cors_json):
+    exit(0)
+  
+  ##-- PERFORM CULLING --##
+  print 'Getting common Keys'
+  if 'common_keys' in args:
+    print 'loading common key file, ', args['common_keys']
+    common_keys = open(args['common_keys'],'r').read().split('\n')
+  else:
+    common_keys = common_items( cors_json, key=Get('keys') )
+  common_keys.sort()
+
+  if 'remove_keys' in args:
+    print 'loading remove key file, ', args['remove_keys']
+    for k in open(args['remove_keys'],'r').read().split('\n'):
+      if k in common_keys:
+        print 'removing', k 
+        common_keys.pop( common_keys.index( k ) )
+
+  #print len(common_keys)
+
+  progmap( 'Loading Correlators Into Memory', partial(LoadCorrelatorData,args,extract_keys=common_keys), cors_json + [ cor for cor in zero_cors_json if cor not in cors_json ] )
+  print sng_report( 'Loaded Correlators Into Memory', cors_json[0]['unculled_sync_correlator'].shape )
+  #for c in cors_json:
+  #  new_keys = [ k for k in c['keys'] if k not in common_keys ]
+  #  if len(new_keys):
+  #    print 'Found keys it did not expect to fine'
+  #    print c['file'], new_keys
+  #    exit(1)
+  
+  def _good_configs( correlator ):
+    cor = correlator['unculled_sync_correlator']
+    cor_mean, cor_std = mean_var( cor, 0 )
+    nt = cor.shape[-1]
+    threshold_sigma = 10
+    threshold_sigma = 2
+    threshold_slices = nt / 3.2
+    threshold_slices = 3
+    good_slices = np.sum( np.abs( cor - cor_mean ) > threshold_sigma * cor_std, (1,2) ) 
+    good_configs = good_slices < threshold_slices
+    #print cor.shape, good_slices.shape, good_configs.shape
+    return good_configs
+  
+  non_extreemal_configurations = np.sum( map( _good_configs, zero_cors_json ), 0 ) == len(zero_cors_json)
+  open( 'diag_cull_keys', 'w+' ).write( '\n'.join(map( Fst, filter( lambda xs: not Snd(xs), zip(common_keys, non_extreemal_configurations.tolist())) )) )
+  open( 'diag_used_keys', 'w+' ).write( '\n'.join(map( Fst, filter( lambda xs:     Snd(xs), zip(common_keys, non_extreemal_configurations.tolist())) )) )
+  nconf = np.sum(non_extreemal_configurations)
+  bin_size = int(args.get('bin',2))
+  nbins = nconf / bin_size
+  def _ExtreemalCull( cor ):
+    #print cor['unculled_sync_correlator'].shape
+    cor['culled_sync_correlator'] = cor['unculled_sync_correlator'][non_extreemal_configurations,:,:]
+    if 'unculled_current' in cor:
+      cor['culled_current']           = cor['unculled_current'][non_extreemal_configurations,:,:]
+      cor['culled_source_correlator'] = cor['unculled_source_correlator'][non_extreemal_configurations,:,:]
+  progmap( 'Culling Extreemal Configurations', _ExtreemalCull, cors_json )
+  print dbl_report( 'Culled Extreemal Configurations', cors_json[0]['unculled_sync_correlator'].shape, cors_json[0]['culled_sync_correlator'].shape )
+
+  ##-- BIN THE CORRELATOR --##
+  def _Binning( cor ):
+    cor['binned_sync_correlator'] = _Binner(cor['culled_sync_correlator'])
+    if 'unculled_current' in cor:
+      cor['binned_current']           = _Binner(cor['culled_current'])
+      cor['binned_source_correlator'] = _Binner(cor['culled_source_correlator'])
+
+  progmap( 'Binning Configurations', _Binning, cors_json )
+  print dbl_report( 'Binned Configurations', cors_json[0]['culled_sync_correlator'].shape, cors_json[0]['binned_sync_correlator'].shape )
+  #for c in cors_json:
+  #  print c['culled_sync_correlator'].shape
+  
+  ##-- BOOTSTRAP --##
+  np.random.seed( 0 )
+  nboot  = int(args.get('boot',200))
+  iboots = np.random.randint( nbins, size=[ nboot, nbins ] )
+  iboots = np.sort( iboots, 1 )
+  boot_counts = [ dict(zip(*np.unique(iboots[ib],return_counts=True))) for ib in range(nboot) ]
+  boot_stamp = np.asarray([ [ boot_count.get(i,0) for i in range(nbins) ] for boot_count in boot_counts ], dtype=np.float64) 
+  #print iboots[0]
+  #print boot_stamp[0]
+  #exit(1)
+  def Bootstrap( prog, cor ):
+    global sync_twopt
+    global boot_stamp
+    global current
+    sync_twopt        = cor['culled_sync_correlator']
+    binned_sync_twopt = cor['binned_sync_correlator']
+    boot_sync_twopt   = np.tensordot( boot_stamp, binned_sync_twopt, (1,0) ) / float(nbins)
+    #boot_sync_twopt  = np.mean(np.take( binned_sync_twopt, iboots, 0 ),1)
+    #boot_sync_twopt   np.mean( boot_stamp[:,:,None,None] * binned_sync_twopt[None,:], 1 )
+    prog(0,1)
+    if 'threepoint' in cor:
+      nt                  = cor['dim'][-1]
+      current             = cor['culled_current']
+      source_twopt        = cor['culled_source_correlator']
+      binned_current      = cor['binned_current']
+      binned_source_twopt = cor['binned_source_correlator']
+  
+      boot_source_twopt = np.tensordot( boot_stamp, binned_source_twopt, (1,0) ) / float(nbins)
+      boot_current      = np.tensordot( boot_stamp, binned_current     , (1,0) ) / float(nbins)
+
+      boot_threept   = np.zeros( boot_sync_twopt.shape + (nt,), dtype=np.complex128 )
+      pool = Pool(processes = int(args.get('cpus','4')))    
+      #for itau in range(nt):
+      #  prog(itau,nt)
+      #  intermediate = _Binner( twopt[:,:,:] * current[:,:,itau,None] )
+      #  threept_boot[:,:,:,itau] = np.tensordot( boot_stamp, intermediate, (1,0) ) / float(nbins)
+      for j,(itau,task_res) in enumerate(pool.imap_unordered(tau_boot,range(nt))):
+        prog(j,nt)
+        boot_threept[:,:,:,itau] = task_res
+      pool.close()
+      pool.join()
+      boot_threept -= boot_sync_twopt[:,:,:,None] * boot_current[:,:,None,:]
+
+      boot_source_twopt.tofile(cor_path(cor,'boot_src_cor_file'))
+      boot_threept.tofile(cor_path(cor,'boot_threepoint_file'))
+    boot_sync_twopt.tofile(cor_path(cor,'boot_sync_cor_file'))
+    #print 'Booted: ', cor_path(cor,'boot_sync_cor_file')
+
+    
+  progprogmap( 'Bootstrapping Configurations', lambda a,b: Bootstrap(a,b), cors_json )
+  print dbl_report( 'Bootstrapped Configurations', cors_json[0]['binned_sync_correlator'].shape, (nboot,)+cors_json[0]['culled_sync_correlator'][0].shape )

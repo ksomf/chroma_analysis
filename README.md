@@ -36,7 +36,14 @@ I used a small utility script to exit the chroma output formats as quickly as po
 ## Chroma result analysis
 
 The first step after extracting the data is to perform coherent bootstraps followed by effectivemass ratios; the somewhat more expensive but easily cacheable components of the calculation.
+
 - [generate_feynhell_analysis.py](chroma_result_analysis/generate_feynhell_analysis.py): Creates the pre-processing scripts for Feynhellman propagators extracted chroma runs, mainly in charge of generating coherent bootstraps across different momentum transfers
 - [generate_gluon_run.py](chroma_result_analysis/generate_gluon_run.py): Creates the pre-processing script for gluon verteces.
 
 These are made up of several components:
+
+- [hl_bootstrap](chroma_result_analysis/hl_bootstrap): Create and save coherent bootstraps
+- [hl_effmass](chroma_result_analysis/hl_effmass): Generate effective masses, including all the critical ratios, and all the threepoint functions
+- [hl_fit](chroma_result_analysis): Fit gluon threepoint functions and extract form factors
+- [hl_threepoint_gen](chroma_result_analysis/hl_threepoint_gen): Generate gluon threepoint functions from two point and action
+- [hl_plot.py](chroma_result_analysis/hl_plot.py): Create plot yaml files that can be turned into plots using [hl_plot](chroma_result_analysis). This allows the generation of whole new plot asthetics for my entire thesis in record time.

@@ -1,0 +1,21 @@
+#!/bin/env python
+
+from hl import *
+
+file = sys.argv[1]
+data_file = change_extension( file, 'dat' )
+obj = LoadJSONFile( file )
+dim = tuple(obj['dim'][::-1])
+splitters = obj.pop('actions')
+obj['dat'] = obj['dat'].replace('[' + ','.join( splitters ) + ']', '' )
+
+data = np.memmap( data_file, dtype=np.float64 )
+data = data.reshape( (-1,len(splitters))+dim )
+
+for i,s in enumerate( splitters ):
+  obj['op'] = s
+  split = file.split('_')
+  split.insert(1,s)
+  new_file = '_'.join( split )
+  json.dump(obj,open(new_file,'w+'))
+  data[:,i].tofile( change_extension(new_file,'dat') )

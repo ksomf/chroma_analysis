@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl           import *
+from hl_load_json import *
+
+from ast             import literal_eval
+from multiprocessing import Pool
+
+q_stamp     = None
+action_data = None
+def perform_qstamp( (i,(s,k)) ):
+  return i,np.sum( q_stamp * RollBackwards(action_data[k], s), (1,2,3) )
+
+if __name__ == "__main__":
+  args, json_files = ArgvToArgsAndFiles( {}, 'json' )
+  q = np.asarray(literal_eval(args['q']))
+  
+  action_file  = args['action']
+  action_json, action_data = map(Fst,LoadReweightJSONAndData( action_file )) #Archaic form from reweighting times returns array
+  
+  _, zero_cors_json = LoadCorrelatorJSON( json_files ) #Pick out only zero cores for this 
+  progmap( 'Loading Correlators Into Memory', partial(LoadCorrelatorData,args), zero_cors_json )
+  print sng_report( 'Loaded Correlators Into Memory', zero_cors_json[0]['unculled_sync_correlator'].shape )
+
+  assert(len(list(set(map(tuple,[ j['dim'] for j in zero_cors_json ]))))==1) #The cors should all have the same dimension
+  nx, ny, nz, nt = zero_cors_json[0]['dim']
+  zs, ys, xs = np.meshgrid( np.arange(nz), np.arange(ny), np.arange(nx), indexing='ij' ) #indexing makes it behave as you expected
+  q_stamp = np.exp(2*np.pi*1.0j * ( xs*q[0]/np.float(nx) + ys*q[1]/np.float(ny) + zs*q[2]/np.float(nz) ))
+
+  identifier = lambda c: (tuple(c['pp']),c['spin'])
+  def work_out_src_iden( cor ):
+    pp, pol = identifier(cor)
+    return (tuple((np.asarray(pp)-q).tolist()),pol)
+  available_2pts = { identifier(c):c for c in zero_cors_json }
+  cor_2ptsrcid_pairs = [ (cor,work_out_src_iden(cor)) for cor in zero_cors_json ]
+  possible_cor_pairs = [ (c,available_2pts[src_id]) for (c,src_id) in cor_2ptsrcid_pairs if src_id in available_2pts ]
+
+  def ConstructThreePointCor( prog, (cor_sync,cor_src) ):
+    op = action_json['op']
+    new_cor                  = dict( cor_sync )
+    new_cor['op']            = op
+    new_cor['type']          = 'gluon'
+    new_cor['weight_prefix'] = os.path.basename(action_json['shift'])
+    new_cor['threepoint']    = True
+    new_cor['q'] = q.tolist()
+    new_cor['p'] = (np.asarray(new_cor['pp']) - q).tolist()
+    new_cor['unculled_src_correlator'] = cor_src['unculled_sync_correlator']
+    if 'noupdate' in args and HasCurrentFile( new_cor, args['fit_key'] ):
+      return
+
+    keys, sources = GetKeyAndSources( cor_sync )
+    key_indicies  = [ action_json['keys'].index(k) for k in keys ]
+
+    pool = Pool(processes = int(args.get('cpus','8')))    
+    current_insertions = np.zeros( new_cor['unculled_sync_correlator'].shape, dtype=np.complex128 )
+    for j,(i,task_res) in enumerate(pool.imap_unordered(perform_qstamp,enumerate(zip(sources,key_indicies)))):
+      current_insertions[i,0,:] = task_res
+      if not j % 100:
+        prog(j,len(keys))
+    pool.close()
+    pool.join()
+    if new_cor['hadron'].count('g') != 2: #HADRONS CONTAIN TIME REVERSED DATA PUT THIS IN AS WELL
+      current_insertions[:,1,0]  = current_insertions[:,0,0]
+      current_insertions[:,1,1:] = current_insertions[:,0,-1:0:-1]
+    new_cor['current'] = current_insertions
+    StoreCorrelatorJSON( new_cor, **args )
+    
+  progprogmap( 'Creating Three Point Cors', ConstructThreePointCor, possible_cor_pairs )
+  print sng_report( 'Created Three Point Cors', len(possible_cor_pairs) )
+

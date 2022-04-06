@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from hl                    import *
+from hl_naming_conventions import parameter_map
+from hl_load_json          import LoadCorrelatorJSON, LoadCorrelatorBootstraps
+from hl_ratios             import twopt_ratios, threept_ratios, MassRatio, threeptR_ratios
+
+from ast       import literal_eval
+from functools import partial
+
+
+args, json_files = ArgvToArgsAndFiles( parameter_map, 'json' )
+save_path = args.get('save_dir','.')+'/'
+
+##-- SETUP CORRELATORS --##
+cors_json, zero_cors_json = LoadCorrelatorJSON( json_files )
+print len(cors_json), len(zero_cors_json)
+
+if 't' in args:
+  cors_json = filter( lambda cor: cor['prop_modification_type']==args['t'], cors_json ) + zero_cors_json
+else:
+  cors_json = cors_json + zero_cors_json
+if 'r' in args:
+  twopt_ratios    = dict( filter( lambda (a,b): a==args['r'], twopt_ratios   .items() ) )
+  threept_ratios  = dict( filter( lambda (a,b): a==args['r'], threept_ratios .items() ) )
+  threeptR_ratios = dict( filter( lambda (a,b): a==args['r'], threeptR_ratios.items() ) )
+
+
+progmap( 'Loading Bootstraps Into Memory', LoadCorrelatorBootstraps, cors_json )
+if 'sync_boot' in cors_json[0]:
+  shape = cors_json[0]['sync_boot'].shape
+else:
+  shape = cors_json[0]['R'].shape
+print sng_report( 'Loaded Bootstraps Into Memory', shape )
+
+twopt_jsons, threept_jsons = SplitFilter( lambda cor: 'threepoint' not in cor, cors_json )
+twopt_jsons, threeptR_jsons = SplitFilter( lambda cor: 'threepointR' not in cor, twopt_jsons )
+
+for k,v in twopt_ratios.items():
+  v(twopt_jsons, args, save_path)
+
+for k,v in threept_ratios.items():
+  v(threept_jsons, args, save_path)
+
+for k,v in threeptR_ratios.items():
+  v(threeptR_jsons, args, save_path)
